@@ -8,6 +8,7 @@ What I need to do:
 - create a setup script
 - add a requirements.txt
 - basic instructions on how to manually set up
+- fix long mode
 
 Whats been done:
 - Source code made for my file system
