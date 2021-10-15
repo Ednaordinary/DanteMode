@@ -41,7 +41,7 @@ async def on_error(event, *args):
 async def on_ready():
     print(f'{client.user.name} has connected to Discord!')
     await client.change_presence(
-        activity=discord.Activity(type=discord.ActivityType.listening, name='to (your user) shout at me'))
+        activity=discord.Activity(type=discord.ActivityType.listening, name=' (your user) shout at me'))
 
 
 @client.event
@@ -51,25 +51,6 @@ async def on_member_join(member):
         f'Hi {member.name}, welcome to this Discord server!'
     )
 
-
-# @client.event
-# async def on_message(message):
-# if 'janet,' in message.content.lower():
-# if message.author.bot:
-#     return
-# print("someone started a generation")
-# print(message)
-# genprompt = message.content.lower()
-# await message.channel.send("The text generator is currently in testing. generating.. please wait (Janet is not responsible for inappropriate text)")
-# async with message.channel.typing():
-# await message.channel.send(
-# 3 '||{ai.generate(n=2,prompt=genprompt,max_length=100,return_as_list=True)}||')
-# await message.channel.send("*this text was generated uncurated by a GPT-2 model, no party is responsible for generated text.*"),
-
-
-# {ai.generate(n=1, return_as_list=True, **kwargs)}
-
-# the above is part of a different bot, ignore
 
 @client.event
 async def on_message(message):
