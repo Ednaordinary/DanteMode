@@ -31,5 +31,5 @@ What you need to run it:
 Install instructions:
 1. Do 'git clone https://github.com/Ednaordinary/DanteMode'
 2. cd into DanteMode and run setup.sh, follow the instructions
-3. When setup has finished, run start.sh
+3. When setup has finished, run start.sh (run start everytime you start dante, but not setup)
 4. Enjoy dante
