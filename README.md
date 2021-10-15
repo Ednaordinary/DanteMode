@@ -10,14 +10,14 @@ https://user-images.githubusercontent.com/88869424/137430048-d1e715f1-0d6e-438a-
 
 
 What I need to do:
-- substitute my file directories for an enviroment variable (directory setup is run in?)
-- create a setup script
-- add a requirements.txt
+- test universal install
 - basic instructions on how to manually set up
 - fix long mode
 
 Whats been done:
-- Source code made for my file system
+- Make a setup script
+- Untested universal install
+- Source code
 - Actual bot release
 - Optimized ML for speed and realism (on gtx 1060 6 gb with cuda, 10 min for decent image)
 
@@ -26,4 +26,10 @@ What you need to run it:
 - gtx 1060, nvidia equivelant or better
 - cuda support
 - python
-- a will to untangle this mess
+- a will to untangle a mess in the case it doesnt work
+
+Install instructions:
+1. Do 'git clone https://github.com/Ednaordinary/DanteMode'
+2. cd into DanteMode and run setup.sh, follow the instructions
+3. When setup has finished, run start.sh
+4. Enjoy dante
