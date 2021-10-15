@@ -3,6 +3,12 @@
 
 Use with your own caution, a lot of development needs to be done and this is not plug and play at the moment.
 
+
+
+https://user-images.githubusercontent.com/88869424/137430048-d1e715f1-0d6e-438a-b7af-04d3b95347c9.mp4
+
+
+
 What I need to do:
 - substitute my file directories for an enviroment variable (directory setup is run in?)
 - create a setup script
