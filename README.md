@@ -19,7 +19,7 @@ What I need to do:
 Whats been done:
 - Source code made for my file system
 - Actual bot release
-- Optimized AI for speed and realism (on gtx 1060 6 gb with cuda, 10 min for decent image)
+- Optimized ML for speed and realism (on gtx 1060 6 gb with cuda, 10 min for decent image)
 
 What you need to run it:
 - decent cpu
