@@ -11,7 +11,7 @@ from random import *
 import numpy as np
 import image
 import torch
-from threading import Thread
+# from threading import Thread
 import queue
 import time
 from big_sleep import Imagine
@@ -71,8 +71,6 @@ async def on_message(message):
         for a in range(20):
             for b in range(20):
                 dream.train_step(a, b)
-                if b == 0 or b % dream.save_every != 0:
-                    continue
                 numsave += 1
                 filename = dreampromptfinal.replace(' ', '_')
                 image = Imageb.open(f'./{filename}.png')
