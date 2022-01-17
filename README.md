@@ -12,14 +12,14 @@ https://user-images.githubusercontent.com/88869424/137430048-d1e715f1-0d6e-438a-
 What I need to do:
 - test universal install
 - basic instructions on how to manually set up
-- fix long mode
 
 Whats been done:
 - Make a setup script
 - Untested universal install
 - Source code
 - Actual bot release
-- Optimized ML for speed and realism (on gtx 1060 6 gb with cuda, 10 min for decent image)
+- Optimized ML for speed and realism (on gtx 1060 6 gb with cuda, 45 seconds for decent image)
+- New model
 
 What you need to run it:
 - decent cpu
