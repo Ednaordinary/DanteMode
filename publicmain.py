@@ -1,17 +1,15 @@
-# bot.py
+# publicmain.py
 from gettext import install
 import os
 import subprocess
 import nextcord as discord
 from nextcord import message
 from dotenv import load_dotenv
-# import keras
 from nextcord.ext import commands
 from random import *
 import numpy as np
 import image
 import torch
-# from threading import Thread
 import queue
 import time
 from big_sleep import Imagine
@@ -19,6 +17,15 @@ from PIL import Image as Imageb
 import shutil
 import random
 from deep_daze import Imagine as Imagine2
+from deep_daze import Imagine as Imagine2
+from glide_text2im.clip.model_creation import create_clip_model
+from glide_text2im.download import load_checkpoint
+from glide_text2im.model_creation import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+    model_and_diffusion_defaults_upsampler,
+)
+from glide_text2im.tokenizer.simple_tokenizer import SimpleTokenizer
 
 print("Loading Access")
 load_dotenv()
