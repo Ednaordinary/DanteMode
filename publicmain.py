@@ -81,7 +81,7 @@ async def on_message(message):
         await message.channel.send("Generating done, Creating Gif.")
         num = random.sample(range(1, 1000),1)
         filename = dreampromptfinal.replace(' ', '_')
-        os.system(f"ffmpeg -framerate 20 -i './Dante/Collection/DanteGif/{filename}/{filename}%d.png' -pix_fmt yuv420p './Dante/Collection/DanteGif/{filename}{num}.mp4'")
+        os.system(f"ffmpeg -y -framerate 20 -i './Dante/Collection/DanteGif/{filename}/{filename}%d.png' -pix_fmt yuv420p './Dante/Collection/DanteGif/{filename}{num}.mp4'")
         # os.system(f"'/storage1/Other/bots/Dante/filereduce.sh' '/storage1/Other/bots/Dante/DanteGif/GifCollection1/{filename}.mp4' 8")
         await message.channel.send(file=discord.File(f'./Dante/Collection/DanteGif/{filename}{num}.mp4'))
         # await message.channel.send(f"Added to queue, estimated time {size * 10} minutes")
