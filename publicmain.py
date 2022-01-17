@@ -63,7 +63,7 @@ async def on_message(message):
         print(dreamprompt)
         removal = ['[', 'dante', 'gif,', '', ']', '/','{','}']
         dreampromptremoval = dreamprompt.split()
-        dreampromptconnect = [word for word in dreampromptremoval if word not in removal]
+        dreampromptconnect = [word for word in dreampromptremoval if word not in removal and word.isalnum()]
         dreampromptfinal = " ".join(map(str, dreampromptconnect))
         print(dreampromptfinal)
         dream = Imagine(text=dreampromptfinal, epochs=20, iterations=20, image_size=256, save_every=1,
@@ -94,7 +94,7 @@ async def on_message(message):
         print(dreamprompt)
         removal = ['[', 'dante,', ']', '/','{','}']
         dreampromptremoval = dreamprompt.split()
-        dreampromptconnect = [word for word in dreampromptremoval if word not in removal]
+        dreampromptconnect = [word for word in dreampromptremoval if word not in removal and word.isalnum()]
         dreampromptfinal = " ".join(map(str, dreampromptconnect))
         print(dreampromptfinal)
         dream = Imagine(text=dreampromptfinal, epochs=20, iterations=20, image_size=256, save_every=1,
@@ -123,7 +123,7 @@ async def on_message(message):
         print(dreamprompt)
         removal = ['[', 'dante', 'alt,', ']', '/','{','}']
         dreampromptremoval = dreamprompt.split()
-        dreampromptconnect = [word for word in dreampromptremoval if word not in removal]
+        dreampromptconnect = [word for word in dreampromptremoval if word not in removal and word.isalnum()]
         dreampromptfinal = " ".join(map(str, dreampromptconnect))
         print(dreampromptfinal)
         dream = Imagine2(
