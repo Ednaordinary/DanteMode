@@ -129,6 +129,18 @@ async def on_message(message):
     if 'dante,' in message.content.lower():
         if message.author.bot:
             return
+        if 'dante, help' in message.content.lower():
+            await message.channel.send("I am Dante, created by Ednaordinary#6602. I have several commands listed below:")
+            await message.channel.send("'Dante, (prompt)' This is my most basic command, which generates an image based on the prompt. (45 seconds)")
+            # await message.channel.send("'Dante zoom, (prompt)' This command is similar to dante gif, except it generates a zooming and rotating video. This uses a separate model due to compatibility issues. (5-7 minutes)")
+            await message.channel.send("'Dante gif, (prompt)' This command generates a gif of the prompt, by recording each iteration. This uses a separate model due to compatibility issues. (5-7 minutes)")
+            await message.channel.send("'Dante alt, (prompt)' This command generates an image based on the prompt using an alternative model.")
+            # await message.channel.send("'Dante aph, (prompt)' This command uses an alternative aph model, with some very interesting results. (5 minutes)")
+            # await message.channel.send("'Dante aph zoom, (prompt)' This command uses an alternative aph model while also zooming in, with some very interesting results. (5 minutes)")
+            # await message.channel.send("'Dante aph fast, (prompt)' This command uses an alternative aph model along with fewer iterations, but lesser quality. (30 seconds)")
+            # await message.channel.send("'Dante aph zoom fast, (prompt)' This command uses an alternative aph model along with fewer iterations while also zooming in. (30 seconds)")
+            # await message.channel.send("'Dante old, (prompt)' This command uses the old dante model. (10 minutes)")
+        return
         await message.channel.send("Generating image.")
         dreamprompt = message.content.lower()
         print(dreamprompt)
