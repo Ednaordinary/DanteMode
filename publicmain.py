@@ -32,9 +32,42 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 client = discord.Client()
 
-print("Starting initial worker")
-# Thread(target=worker, daemon=True).start() # queue and multithread not currently working, does nothing good
-print("Finished starting initial worker")
+print("Creating Models")
+has_cuda = th.cuda.is_available()
+device = th.device('cpu' if not has_cuda else 'cuda')
+print("Creating base model...")
+options = model_and_diffusion_defaults()
+options['use_fp16'] = has_cuda
+options['timestep_respacing'] = '50' # use 100 diffusion steps for fast sampling
+model, diffusion = create_model_and_diffusion(**options)
+model.eval()
+if has_cuda:
+    model.convert_to_fp16()
+model.to(device)
+model.load_state_dict(load_checkpoint('base', device))
+print('total base parameters', sum(x.numel() for x in model.parameters()))
+print("Creating upsampler model...")
+options_up = model_and_diffusion_defaults_upsampler()
+options_up['use_fp16'] = has_cuda
+options_up['timestep_respacing'] = 'fast27' # use 27 diffusion steps for very fast sampling
+model_up, diffusion_up = create_model_and_diffusion(**options_up)
+model_up.eval()
+if has_cuda:
+    model_up.convert_to_fp16()
+model_up.to(device)
+model_up.load_state_dict(load_checkpoint('upsample', device))
+print('total upsampler parameters', sum(x.numel() for x in model_up.parameters()))
+def show_images(batch: th.Tensor, filename):
+    """ Display a batch of images inline. """
+    scaled = ((batch + 1)*127.5).round().clamp(0,255).to(th.uint8).cpu()
+    reshaped = scaled.permute(2, 0, 3, 1).reshape([batch.shape[2], -1, 3])
+    theimage = Imageb.fromarray(reshaped.numpy())
+    theimage.save(f"/storage1/Other/bots/Dante/Collection 12/{filename}.png")
+print("Creating CLIP")
+clip_model = create_clip_model(device=device)
+clip_model.image_encoder.load_state_dict(load_checkpoint('clip/image-enc', device))
+clip_model.text_encoder.load_state_dict(load_checkpoint('clip/text-enc', device))
+print("Finished creating models")
 
 @client.event
 async def on_error(event, *args):
