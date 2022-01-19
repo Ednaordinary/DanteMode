@@ -26,4 +26,3 @@ echo Add you discord token in .env so it looks like DISCORD_TOKEN=* where * is y
 echo You may have to enable Hidden Files in you file manager (View > Hidden Files)
 read -rsp $'Press any key to finish the setup\n' -n1 key
 echo You have finished setup, you should not run it again unless .env has been deleted
-# test commit, ignore
