@@ -1,9 +1,7 @@
-big-sleep
-nextcord
-gettext
-python-dotenv
-shutil
-numpy
+big-sleep=0.8.5
+nextcord=2.0.0a6
+python-dotenv=0.18.0
+numpy=1.21.0
 torch=1.7.1
-pillow
-deep-daze
+pillow=8.3.1
+deep-daze=0.10.2
