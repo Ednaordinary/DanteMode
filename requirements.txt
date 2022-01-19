@@ -1,0 +1,9 @@
+big-sleep
+nextcord
+gettext
+python-dotenv
+shutil
+numpy
+torch=1.7.1
+pillow
+deep-daze
