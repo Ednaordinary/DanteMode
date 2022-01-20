@@ -15,6 +15,7 @@ python3 -m pip install -U numpy
 python3 -m pip install -U torch=1.7.1
 python3 -m pip install -U pillow
 python3 -m pip install -U deep_daze
+python3 -m pip install git+https://github.com/openai/glide-text2im
 docker pull alexjc/neural-enhance
 echo Please install CUDA now
 echo https://developer.nvidia.com/cuda-downloads
