@@ -5,3 +5,4 @@ numpy=1.21.0
 torch=1.7.1
 pillow=9.0.0
 deep-daze=0.10.2
+git+https://github.com/openai/glide-text2im
