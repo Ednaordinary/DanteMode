@@ -17,9 +17,7 @@ python3 -m pip install -U pillow
 python3 -m pip install -U deep_daze
 python3 -m pip install git+https://github.com/openai/glide-text2im
 docker pull alexjc/neural-enhance
-echo Please install CUDA now
-echo https://developer.nvidia.com/cuda-downloads
-echo Common mistake: if your on ubuntu, use the ubuntu install, NOT the debian one
+
 read -rsp $'Press any key to continue the setup\n' -n1 key
 touch ./.env
 echo "DISCORD_TOKEN=" >> ./.env
