@@ -1,4 +1,8 @@
 # DanteMode
+
+# ‼️ Big rewrite with less bad code coming soon
+
+
 (In private development for ~6 months) Dante, my discord bot. Open source project in development and not optimized for other filesystems, install and setup script in development
 
 Use with your own caution, a lot of development needs to be done and this is not plug and play at the moment.
