@@ -1,7 +1,7 @@
 # DanteMode
 
 # ‼️ Big rewrite with less bad code coming soon
-
+rewrite is technically done but I need to fix up the code so it relys on paths relative to the repository instead of my system 
 
 (In private development for ~6 months) Dante, my discord bot. Open source project in development and not optimized for other filesystems, install and setup script in development
 
