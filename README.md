@@ -1,6 +1,10 @@
 # DanteMode
 
 # ‼️ Big rewrite with less bad code coming soon
+
+
+# update 2 im rewriting this for a third time but i havent even published the second one
+# (i have a love hate relationship with asyncio.run_coroutine_threadsafe())
 rewrite is technically done but I need to fix up the code so it relys on paths relative to the repository instead of my system 
 
 (In private development for ~6 months) Dante, my discord bot. Open source project in development and not optimized for other filesystems, install and setup script in development
