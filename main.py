@@ -1,11 +1,13 @@
 from diffusers import AutoencoderTiny
-from models import GenericModel, OptimizedModel, IntermediateModel, GenericOutput, IntermediateOutput, RunStatus
+from models import GenericModel, OptimizedModel, IntermediateModel, GenericOutput, IntermediateOutput, RunStatus, Prompt
 from dotenv import load_dotenv
 import nextcord as discord
 import threading
+import asyncio
 import torch
 import time
 import gc
+import io
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -69,10 +71,40 @@ def model_factory():
         run_queue.append(flattened_run)
         prompt_queue.pop(0)
 
-def model_runner():
+async def async_model_runner():
     global run_queue
     while True:
-        while 
+        if run_queue == []:
+            time.sleep(0.01)
+        now = run_queue[0] 
+        prompts = []
+        index_amts = []
+        last_interaction = None
+        for idx, interaction in enumerate(now.interactions):
+            if interaction == last_interaction:
+                index_amts[-1] += 1
+            else:
+                index_amts.append(1)
+                last_interaction = last_interaction
+        last_interaction = None:
+        real_idx = None
+        for idx, interaction in enumerate(now.interactions): # (self, model, prompts, negative_prompts, interactions)
+            if interaction 
+            # (self, prompt, negative_prompt, interaction, index):
+            prompts.append(Prompt(prompt=request.prompt, negative_prompt=now.negative_prompts[idx], now.interactions[idx], idx))
+        images = {}
+        limiter = time.time()
+        async for i in now.model.call(prompts):
+            if type(i) == GenericOutput:
+                
+            if type(i) == IntermediateOutput:
+                
+            if type(i) == RunStatus:
+                
+
+def model_runner():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(async_model_runner)
 
 @client.event
 async def on_ready():
@@ -87,7 +119,7 @@ async def generate(
             description="The prompt to generate off of",
             max_length=1024,
         ),
-        negative_prompt: str = discord.SlashOption(
+        negative_prompt: Optional[str] = discord.SlashOption(
             name="negative prompt",
             required=True,
             description="The negative prompt to generate off of",
@@ -110,9 +142,10 @@ async def generate(
     global prompt_queue
     if not model: model = "sd"
     if not images: images = default_images[model]
+    if not negative_prompt: negative_prompt=None
     interaction.response.send_message("Generation has been queued.")
     #(self, model, prompt, negative_prompt, amount, interaction)
-    prompt_queue.append(FactoryRequest(model=model, prompt=prompt, negative_prompt=prompt, amount=images, interaction=interaction))
+    prompt_queue.append(FactoryRequest(model=model, prompt=prompt, negative_prompt=negative_prompt, amount=images, interaction=interaction))
 
 threading.Thread(target=model_factory, daemon=True).start()
 client.run(TOKEN)
