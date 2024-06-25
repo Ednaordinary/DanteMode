@@ -36,8 +36,11 @@ class RunRequest:
     def __init__(self, model, prompts, negative_prompts, interactions):
         self.model = model
         self.prompts = prompts
-        self.negative_prompts = negative_prompts
-        self.interactions = interactions
+
+class Output:
+    def __init__(self, output, out_type):
+        self.output = output
+        self.out_type = out_type
 
 def model_factory():
     global prompt_queue
@@ -47,15 +50,12 @@ def model_factory():
             time.sleep(0.01)
         while len(run_queue) > 1:
             time.sleep(0.01)
-        for idx, prompt in enumerate(prompt_queue[0]): # prompt, negative_prompt, interaction, index
+        for idx, prompt in enumerate(prompt_queue[0]): # self, model, prompt, negative_prompt, amount, interaction
             if idx == 0:
                 current_model = prompt.model
-                flattened_run = RunRequest(model=model_translations[prompt.model], prompts=[prompt.prompt]*prompt.amount, negative_prompts=[prompt.negative_prompt]*prompt.amount, interactions=[prompt.interactions]*prompt.amount)
+                flattened_run = RunRequest(model=model_translations[prompt.model], prompts=prompt)
             else:
-                prompts = flattened_run.prompts + [prompt.prompt]*prompt.amount
-                negative_prompts = flattened_run.negative_prompts + [prompt.negative_prompt]*prompt.amount
-                interactions = flattened_run.interactions + [prompt.negative_prompt]*prompt.amount
-                flattened_run = RunRequest(model=flattened_run.model, prompts=prompts, negative_prompts = negative_prompts, interactions=interactions)
+                flattened_run = RunRequest(model=flattened_run.model, prompts=flattened_run.prompts + prompt)
         last_interaction = None
         for interaction in flattened_run.interactions:
             if interaction != last_interaction:
@@ -76,27 +76,39 @@ async def async_model_runner():
     while True:
         if run_queue == []:
             time.sleep(0.01)
-        now = run_queue[0] 
+        now = run_queue[0] # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
-        index_amts = []
-        last_interaction = None
-        for idx, interaction in enumerate(now.interactions):
-            if interaction == last_interaction:
-                index_amts[-1] += 1
-            else:
-                index_amts.append(1)
-                last_interaction = last_interaction
-        last_interaction = None:
-        real_idx = None
-        for idx, interaction in enumerate(now.interactions): # (self, model, prompts, negative_prompts, interactions)
-            if interaction 
-            # (self, prompt, negative_prompt, interaction, index):
-            prompts.append(Prompt(prompt=request.prompt, negative_prompt=now.negative_prompts[idx], now.interactions[idx], idx))
         images = {}
+        #this is so much simpler why didn't I think of it earlier??
+        now.model.to('cuda')
+        for request in now:
+            for i in range(request.amount):
+                prompts.append(Prompt(prompt=request.prompt, request=request.negative_prompt, interaction=request.interaction, index=i))
+                images[request.interaction] = [None]*request.amount
+                asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message("Model loaded to gpu", loop=client.loop)
+        #prompts = []
+        #index_amts = []
+        #last_interaction = None
+        #for idx, interaction in enumerate(now.interactions):
+        #    if interaction == last_interaction:
+        #        index_amts[-1] += 1
+        #    else:
+        #        index_amts.append(1)
+        #        last_interaction = last_interaction
+        #last_interaction = None:
+        #real_idx = None
+        #for idx, interaction in enumerate(now.interactions): # (self, model, prompts, negative_prompts, interactions)
+        #    if interaction == last_interaction:
+        #        real_idx += 1
+        #    else:
+        #        real_idx 
+        #    # (self, prompt, negative_prompt, interaction, index):
+        #    prompts.append(Prompt(prompt=request.prompt, negative_prompt=now.negative_prompts[idx], now.interactions[idx], idx))
         limiter = time.time()
         async for i in now.model.call(prompts):
-            if type(i) == GenericOutput:
-                
+            if type(i) == GenericOutput: #(self, output, out_type, interaction, index)
+                #This event is final, meaning this image is done.
+                images[i.interaction][index] = Output(output=i.output, out_type=i.out_type)
             if type(i) == IntermediateOutput:
                 
             if type(i) == RunStatus:
