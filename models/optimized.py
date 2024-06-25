@@ -13,7 +13,4 @@ class OptimizedModel(GenericModel):
         if model.device.type != "cuda": self.model.to("cuda")
         self.helper.set_params(cache_interval=3, cache_branch_id=0)
         self.helper.enable()
-        for i in range(0, len(prompts), self.max_latent):
-            output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
-            for idx, out in enumerate(output):
-                yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
+        super().call(self, prompts)
