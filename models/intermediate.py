@@ -1,6 +1,6 @@
 from generic import GenericOutput, RunStatus
 from optimized import OptimizedModel
-from diffusers import DPMSolverMultistepScheduler, AutoencoderTiny
+from diffusers import DPMSolverMultistepScheduler
 from diffusers.utils import numpy_to_pil
 from DeepCache import DeepCacheSDHelper
 import threading
