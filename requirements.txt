@@ -1,3 +1,8 @@
 nextcord
+diffusers
+transformers
+accelerate
+flash_attn
 python-dotenv
-pillow
+xformers
+deepcache
