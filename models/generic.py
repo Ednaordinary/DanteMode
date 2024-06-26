@@ -21,7 +21,6 @@ class GenericOutput:
         self.out_type = out_type,
         self.interaction = interaction
         self.index = index
-#
 class GenericModel:
     def __init__(self, path, out_type, max_latent, steps):
         self.path = path

@@ -2,7 +2,6 @@ from .generic import GenericOutput, RunStatus
 from .optimized import OptimizedModel
 import threading
 import time
-#
 class IntermediateOutput(GenericOutput):
     pass
 
