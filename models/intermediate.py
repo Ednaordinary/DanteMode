@@ -43,7 +43,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                         #intermediate = numpy_to_pil((intermediate / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((256, 256))
                         #intermediates should be handled only when we actually want to send them
                         yield IntermediateOutput(output=intermediate, out_type="latent-image", interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
-                    yield RunStatus(current=self.step, total=self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
+                    yield RunStatus(current=self.step+(i*self.steps), total=((i+1)*self.steps), interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                     self.intermediate_update = False
                 time.sleep(0.01)
             for idx, out in enumerate(self.out[0]):

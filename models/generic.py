@@ -1,6 +1,7 @@
 from diffusers import DiffusionPipeline
 import torch
 import threading
+import gc
 
 class RunStatus:
     def __init__(self, current, total, interactions):
@@ -33,6 +34,10 @@ class GenericModel:
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
             self.model.vae.enable_slicing()
         self.model = self.model.to(device)
+    def del_model(self):
+        del self.model
+        gc.collect()
+        torch.cuda.empty_cache()
     async def call(self, prompts):
         self.to("cuda")
         def threaded_model(self, model, prompts, negative_prompts, steps, callback):
@@ -45,7 +50,7 @@ class GenericModel:
             step = 0
             while model_thread.is_alive():
                 if step != self.step:
-                    yield RunStatus(current=self.step, total=self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
+                    yield RunStatus(current=self.step+(i*self.steps), total=((i+1)*self.steps), interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                 step = self.step
             for idx, out in enumerate(self.out):
                 yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)

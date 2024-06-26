@@ -29,8 +29,7 @@ model_translations = {
 default_images = {
     "sd": 10
 }
-interaction_images = {}
-
+images = {}
 
 class FactoryRequest:
     def __init__(self, model, prompt, negative_prompt, amount, interaction):
@@ -51,19 +50,8 @@ class FactoryRequest:
 
 class Output:
     def __init__(self, output, out_type, index):
-        if out_type == "image":
-            with io.BytesIO() as imagebn:
-                output.save(imagebn, format="JPEG", subsampling=0, quality=90)
-                imagebn.seek(0)
-                out_type = "jpg-io"
-                self.output = discord.File(fp=imagebn, filename=str(index) + ".jpg")
-        else:
-            self.output = output
+        self.output = output
         self.out_type = out_type
-        self.index = index
-
-class CachedOutput():
-    def __init__(self, index):
         self.index = index
 
 def model_factory():
@@ -112,14 +100,13 @@ def model_factory():
 
 async def async_model_runner():
     global run_queue
-    global interaction_images
+    global images
     while True:
         while len(run_queue) == 0:
             time.sleep(0.01)
         now = run_queue[0]
         # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
-        images = {}
         now[0].model.to('cuda')
         for request in now:
             for i in range(request.amount):
@@ -133,11 +120,10 @@ async def async_model_runner():
         async for i in now[0].model.call(prompts):
             if type(i) == GenericOutput:  #(self, output, out_type, interaction, index)
                 #This event is final, meaning this image is done.
-                print(i.output, i.out_type, i.index)
                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
             if type(i) == IntermediateOutput:
                 #output = i.output.to('cpu', non_blocking=True)
-                images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type, index=i.index)
+                images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
             if type(i) == RunStatus:
                 if limiter + 1.0 < time.time():
                     interactions = list(set(i.interactions))
@@ -145,35 +131,36 @@ async def async_model_runner():
                         sendable_images = []
                         for idx, image in enumerate(images[interaction]):
                             if image != None:
-                                if image.out_type[0] == 'latent-image':
+                                if image.out_type == 'latent-image':
                                     image = image.output.to('cpu', non_blocking=True)
                                     image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((128, 128))
                                     with io.BytesIO() as imagebn:
-                                        image.save(imagebn, format="JPEG")
+                                        image.save(imagebn, format="JPEG", quality=50)
                                         imagebn.seek(0)
                                         sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
                                 else:
-                                    sendable_images.append(image.output)
+                                    with io.BytesIO() as imagebn:
+                                        image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
+                                        imagebn.seek(0)
+                                        sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
                         if sendable_images:
                             for request in now:
                                 if request.interaction == interaction:
                                     this_request = request
                                     break
-                            progress = (len(sendable_images) * i.current * 100) / (i.total[0] * this_request.amount)
+                            progress = (i.current * 100) / (i.total[0])
                             asyncio.run_coroutine_threadsafe(
                                 coro=interaction.edit_original_message(content=str(round(progress, 2)) + "%",
                                    files=sendable_images), loop=client.loop)
                     limiter = time.time()
         for request in now:
             sendable_images = []
-            for image in images[request.interaction]:
+            for idx, image in enumerate(images[request.interaction]):
                 if image != None:
-                    #with io.BytesIO() as imagebn:
-                    #    image.save(imagebn)
-                    if isinstance(image, CachedOutput):
-
-                    sendable_images.append(image.output)
-            print(sendable_images)
+                    with io.BytesIO() as imagebn:
+                        image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
+                        imagebn.seek(0)
+                        sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
             if sendable_images != []:
                 if request.negative_prompt != "":
                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content=str(
@@ -184,8 +171,6 @@ async def async_model_runner():
                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(
                         content=str(request.amount) + " images of '" + request.prompt + "'", files=sendable_images),
                         loop=client.loop)
-                for image in sendable_images:
-                    images[request.interaction][image.index] = CachedOutput(index=image.index)
         model_reused = False
         if len(run_queue) > 1:
             if run_queue[1].model.path == now.model.path:
@@ -195,10 +180,7 @@ async def async_model_runner():
                 if run_queue[2].model.path == now.model.path:
                     run_queue[2].model = now.model.to('cpu')
                     model_reused = True
-        if not model_reused:
-            del now[0].model
-        gc.collect()
-        torch.cuda.empty_cache()
+        if not model_reused: now[0].model.del_model()
         run_queue.pop(0)
 
 
