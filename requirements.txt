@@ -6,3 +6,4 @@ flash_attn
 python-dotenv
 xformers
 deepcache
+torch

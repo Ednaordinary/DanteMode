@@ -1,16 +1,14 @@
-from generic import GenericOutput, RunStatus
-from optimized import OptimizedModel
-from diffusers import DPMSolverMultistepScheduler
-from diffusers.utils import numpy_to_pil
-from DeepCache import DeepCacheSDHelper
+from .generic import GenericOutput, RunStatus
+from .optimized import OptimizedModel
 import threading
+import time
 
 class IntermediateOutput(GenericOutput):
     pass
 
 class IntermediateOptimizedModel(OptimizedModel):
     def __init__(self, path, out_type, max_latent, steps, mini_vae):
-        super().__init__(self, path, out_type, max_latent, steps)
+        super().__init__(path, out_type, max_latent, steps)
         self.mini_vae = mini_vae
     async def call(self, prompts):
         self.model.to("cuda")

@@ -25,7 +25,7 @@ class GenericOutput:
 class GenericModel:
     def __init__(self, path, out_type, max_latent, steps):
         self.path = path
-        self.model = DiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16, low_cpu_mem)
+        self.model = DiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16) #, low_cpu_mem=True)
         self.model.vae.enable_slicing()
         self.out_type = out_type
         self.max_latent = max_latent
@@ -33,7 +33,7 @@ class GenericModel:
     def to(self, device):
         self.model = self.model.to(device)
     async def call(self, prompts):
-        if model.device.type != "cuda": self.model.to("cuda")
+        if self.model.device.type != "cuda": self.model.to("cuda")
         def threaded_model(self, model, prompts, negative_prompts, steps, callback):
             self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback)
         def progress_callback(i, t, latents):
@@ -46,5 +46,5 @@ class GenericModel:
                 if step != self.step:
                     yield RunStatus(current=self.step, total=self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                 step = self.step
-            for idx, out in enumerate(output):
+            for idx, out in enumerate(self.out):
                 yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
