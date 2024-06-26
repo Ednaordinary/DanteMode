@@ -46,5 +46,5 @@ class IntermediateOptimizedModel(OptimizedModel):
                     yield RunStatus(current=self.step, total=self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                     self.intermediate_update = False
                 time.sleep(0.01)
-            for idx, out in enumerate(self.out):
+            for idx, out in enumerate(self.out[0]):
                 yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
