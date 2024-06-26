@@ -4,10 +4,11 @@ import threading
 import gc
 
 class RunStatus:
-    def __init__(self, current, total, interactions):
+    def __init__(self, current, total, interactions, indexs):
         self.current = current
         self.total = total,
         self.interactions = interactions
+        self.indexs = indexs
 
 class Prompt:
     def __init__(self, prompt, negative_prompt, interaction, index):
@@ -50,7 +51,7 @@ class GenericModel:
             step = 0
             while model_thread.is_alive():
                 if step != self.step:
-                    yield RunStatus(current=self.step+(i*self.steps), total=((i+1)*self.steps), interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
+                    yield RunStatus(current=(self.step*len(prompts[i:i+self.max_latent]))+(i*self.steps), total=len(prompts)*self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                 step = self.step
             for idx, out in enumerate(self.out):
                 yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)

@@ -4,35 +4,55 @@ from diffusers import AutoencoderTiny
 import threading
 import torch
 import time
+import gc
+
+
 class IntermediateOutput(GenericOutput):
     pass
+
 
 class IntermediateOptimizedModel(OptimizedModel):
     def __init__(self, path, out_type, max_latent, steps, mini_vae):
         super().__init__(path, out_type, max_latent, steps)
         self.mini_vae = mini_vae
+
     def to(self, device):
         super().to(device)
         if isinstance(self.mini_vae, str):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
-                                        torch_dtype=torch.float16)
+                                                            torch_dtype=torch.float16)
         self.mini_vae.to(device)
+
+    def del_model(self):
+        del self.model
+        del self.intermediates
+        del self.mini_vae
+        gc.collect()
+        torch.cuda.empty_cache()
+
     async def call(self, prompts):
         self.to("cuda")
         self.helper.set_params(cache_interval=3, cache_branch_id=0)
         self.helper.enable()
+
         def intermediate_callback(i, t, latents):
             #latents = kwargs["latents"]
             sample = self.mini_vae.decode(latents).sample
             self.step = i
             self.intermediates = sample
             self.intermediate_update = True
+
         def threaded_model(prompts, negative_prompts, steps, callback):
-            print(prompts, negative_prompts, steps, callback)
-            self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts], num_inference_steps=steps, callback=callback, callback_steps=1) # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+            self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
+                                  num_inference_steps=steps, callback=callback,
+                                  callback_steps=1)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+
         for i in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
-            model_thread = threading.Thread(target=threaded_model, args=[[x.prompt for x in prompts[i:i+self.max_latent]], [x.negative_prompt for x in prompts[i:i+self.max_latent]], self.steps, intermediate_callback])
+            model_thread = threading.Thread(target=threaded_model,
+                                            args=[[x.prompt for x in prompts[i:i + self.max_latent]],
+                                                  [x.negative_prompt for x in prompts[i:i + self.max_latent]],
+                                                  self.steps, intermediate_callback])
             model_thread.start()
             self.intermediates = None
             self.intermediate_update = False
@@ -42,9 +62,16 @@ class IntermediateOptimizedModel(OptimizedModel):
                         #intermediate = intermediate.to('cpu', non_blocking=True)
                         #intermediate = numpy_to_pil((intermediate / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((256, 256))
                         #intermediates should be handled only when we actually want to send them
-                        yield IntermediateOutput(output=intermediate, out_type="latent-image", interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
-                    yield RunStatus(current=self.step+(i*self.steps), total=((i+1)*self.steps), interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
+                        yield IntermediateOutput(output=intermediate, out_type="latent-image",
+                                                 interaction=prompts[i:i + self.max_latent][idx].interaction,
+                                                 index=prompts[i:i + self.max_latent][idx].index)
+                    #yield RunStatus(current=(self.step*len(prompts[i:i+self.max_latent]))+(i*self.steps), total=len(prompts)*self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
+                    yield RunStatus(current=self.step,
+                                    total=self.steps,
+                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
                     self.intermediate_update = False
                 time.sleep(0.01)
             for idx, out in enumerate(self.out[0]):
-                yield GenericOutput(output=out, out_type=self.out_type, interaction=prompts[i:i+self.max_latent][idx].interaction, index=prompts[i:i+self.max_latent][idx].index)
+                yield GenericOutput(output=out, out_type=self.out_type,
+                                    interaction=prompts[i:i + self.max_latent][idx].interaction,
+                                    index=prompts[i:i + self.max_latent][idx].index)

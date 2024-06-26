@@ -23,7 +23,7 @@ prompt_queue = []
 run_queue = []
 model_translations = {
     # (self, path, out_type, max_latent, steps, mini_vae)
-    "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=5, steps=25,
+    "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=1, steps=25,
                                      mini_vae="madebyollin/taesd"),
 }
 default_images = {
@@ -120,9 +120,15 @@ async def async_model_runner():
         async for i in now[0].model.call(prompts):
             if type(i) == GenericOutput:  #(self, output, out_type, interaction, index)
                 #This event is final, meaning this image is done.
+                images[i.interaction][i.index] = None
+                gc.collect()
+                torch.cuda.empty_cache()
                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
             if type(i) == IntermediateOutput:
                 #output = i.output.to('cpu', non_blocking=True)
+                images[i.interaction][i.index] = None
+                gc.collect()
+                torch.cuda.empty_cache()
                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
             if type(i) == RunStatus:
                 if limiter + 1.0 < time.time():
@@ -148,7 +154,10 @@ async def async_model_runner():
                                 if request.interaction == interaction:
                                     this_request = request
                                     break
-                            progress = (i.current * 100) / (i.total[0])
+                            # separating this because it is CONFUSING
+                            current = i.current * len([x for x in i.interactions if x == interactions])
+                            already_done = len([x for x in sendable_images if isinstance(x, GenericOutput)])
+                            progress = ((i.current * 100) / (i.total[0])) * len(i.interactions) + (i.total[0] * [x for x in sendable_images if isinstance(x, GenericOutput)])/ request.amount
                             asyncio.run_coroutine_threadsafe(
                                 coro=interaction.edit_original_message(content=str(round(progress, 2)) + "%",
                                    files=sendable_images), loop=client.loop)
@@ -164,7 +173,7 @@ async def async_model_runner():
             if sendable_images != []:
                 if request.negative_prompt != "":
                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content=str(
-                        request.amount) + " images of '" + str(request.prompt) + "' + (negative: '" + str(request.negative_prompt) + "'",
+                        request.amount) + " images of '" + str(request.prompt) + "' + (negative: '" + str(request.negative_prompt) + "')",
                                                                                                     files=sendable_images),
                                                      loop=client.loop)
                 else:
@@ -180,7 +189,11 @@ async def async_model_runner():
                 if run_queue[2].model.path == now.model.path:
                     run_queue[2].model = now.model.to('cpu')
                     model_reused = True
-        if not model_reused: now[0].model.del_model()
+        #if not model_reused: now[0].model.del_model()
+        #del now[0].model
+        now[0].model.to("cpu")
+        gc.collect()
+        torch.cuda.empty_cache()
         run_queue.pop(0)
 
 
