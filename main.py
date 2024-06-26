@@ -22,7 +22,7 @@ model_translations = {
 default_images = {
     "sd": 10
 }
-interactions = {}
+interaction_images = {}
 
 class FactoryRequest:
     def __init__(self, model, prompt, negative_prompt, amount, interaction):
@@ -38,8 +38,12 @@ class RunRequest:
         self.prompts = prompts
 
 class Output:
-    def __init__(self, output, out_type):
-        self.output = output
+    def __init__(self, output, out_type, index):
+        #creating the discord file here should ensure we don't unnecessarily reupload files
+        imagebn = io.BytesIO
+        output.save(imagebn, format="JPEG", subsampling=0, quality=90)
+        imagebn.seek(0)
+        self.output = discord.File(fp=imagebn, filename=str(index)+".jpg")
         self.out_type = out_type
 
 def model_factory():
@@ -73,46 +77,48 @@ def model_factory():
 
 async def async_model_runner():
     global run_queue
+    global interaction_images
     while True:
         if run_queue == []:
             time.sleep(0.01)
         now = run_queue[0] # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
         images = {}
-        #this is so much simpler why didn't I think of it earlier??
         now.model.to('cuda')
         for request in now:
             for i in range(request.amount):
                 prompts.append(Prompt(prompt=request.prompt, request=request.negative_prompt, interaction=request.interaction, index=i))
-                images[request.interaction] = [None]*request.amount
+                if not request.interaction in images:
+                    images[request.interaction] = [None]*request.amount
                 asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message("Model loaded to gpu", loop=client.loop)
-        #prompts = []
-        #index_amts = []
-        #last_interaction = None
-        #for idx, interaction in enumerate(now.interactions):
-        #    if interaction == last_interaction:
-        #        index_amts[-1] += 1
-        #    else:
-        #        index_amts.append(1)
-        #        last_interaction = last_interaction
-        #last_interaction = None:
-        #real_idx = None
-        #for idx, interaction in enumerate(now.interactions): # (self, model, prompts, negative_prompts, interactions)
-        #    if interaction == last_interaction:
-        #        real_idx += 1
-        #    else:
-        #        real_idx 
-        #    # (self, prompt, negative_prompt, interaction, index):
-        #    prompts.append(Prompt(prompt=request.prompt, negative_prompt=now.negative_prompts[idx], now.interactions[idx], idx))
         limiter = time.time()
         async for i in now.model.call(prompts):
             if type(i) == GenericOutput: #(self, output, out_type, interaction, index)
                 #This event is final, meaning this image is done.
                 images[i.interaction][index] = Output(output=i.output, out_type=i.out_type)
             if type(i) == IntermediateOutput:
-                
+                images[i.interaction][index] = Output(output=i.output, out_type=i.out_type)
             if type(i) == RunStatus:
-                
+                interactions = list(set(i.interactions))
+                for interaction in interactions:
+                    sendable_images = []
+                    for image in images[interaction]:
+                        if image != None: sendable_images.append(image)
+                    if interaction in interaction_images:
+                        interaction_images[interaction]
+                    if sendable_images != []:
+                        progress = len(sendable_images) * i.current / i.total
+                        asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content=str(round(progress, 2)) + "%", files=sendable_images, loop=client.loop)
+        for request in now:
+            sendable_images = []
+            for image in images[interaction]:
+                if image != None: sendable_images.append(image)
+            if interaction in interaction_images:
+                interaction_images[interaction]
+            if sendable_images != []:
+                progress = len(sendable_images) * i.current / i.total
+                asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content=, files=sendable_images, loop=client.loop)
+        run_queue.pop(0)
 
 def model_runner():
     loop = asyncio.new_event_loop()
