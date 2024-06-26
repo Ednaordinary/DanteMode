@@ -1,7 +1,7 @@
 from .generic import GenericModel
 from diffusers import DPMSolverMultistepScheduler
 from DeepCache import DeepCacheSDHelper
-
+#
 class OptimizedModel(GenericModel):
     def __init__(self, path, out_type, max_latent, steps):
         super().__init__(path, out_type, max_latent, steps)
