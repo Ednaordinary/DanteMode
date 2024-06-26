@@ -1,4 +1,3 @@
-from diffusers import AutoencoderTiny
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel
 from models.optimized import OptimizedModel
@@ -23,8 +22,7 @@ run_queue = []
 model_translations = {
     # (self, path, out_type, max_latent, steps, mini_vae)
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=10, steps=25,
-                                     mini_vae=AutoencoderTiny.from_pretrained("madebyollin/taesd",
-                                                                              torch_dtype=torch.float16)),
+                                     mini_vae="madebyollin/taesd"),
 }
 default_images = {
     "sd": 10
@@ -41,12 +39,12 @@ class FactoryRequest:
         self.interaction = interaction
 
 
-class RunRequest:
-    def __init__(self, model, prompts, negative_prompts, interactions):
-        self.model = model
-        self.prompts = prompts
-        self.negative_prompts = negative_prompts
-        self.interactions = interactions
+#class RunRequest:
+#    def __init__(self, model, prompts, negative_prompts, interactions):
+#        self.model = model
+#        self.prompts = prompts
+#        self.negative_prompts = negative_prompts
+#        self.interactions = interactions
 
 
 class Output:
@@ -71,27 +69,31 @@ def model_factory():
             if idx == 0:
                 current_model = prompt.model
                 if isinstance(current_model, str):
-                    flattened_run = RunRequest(model=model_translations[prompt.model], prompts=prompt,
-                                               negative_prompts=prompt.negative_prompt,
-                                               interactions=[prompt.interaction])
+                    #flattened_run = RunRequest(model=model_translations[prompt.model], prompts=prompt,
+                    #                           negative_prompts=prompt.negative_prompt,
+                    #                           interactions=[prompt.interaction])
+                    prompt.model = model_translations[prompt.model]
+                    flattened_run = [prompt]
                 else:
-                    flattened_run = RunRequest(model=prompt.model, prompts=prompt,
-                                               negative_prompts=prompt.negative_prompt,
-                                               interactions=[prompt.interaction])
+                    flattened_run = [prompt]
+                    #flattened_run = RunRequest(model=prompt.model, prompts=prompt,
+                    #                           negative_prompts=prompt.negative_prompt,
+                    #                           interactions=[prompt.interaction])
             else:
-                flattened_run = RunRequest(model=flattened_run.model, prompts=flattened_run.prompts + prompt,
-                                           negative_prompts=flattened_run.negative_prompts + prompt.negative_prompt,
-                                           interactions=flattened_run.interactions + prompt.interaction)
+                if prompt.model == current_model:
+                    flattened_run.append(prompt)
+                #flattened_run = RunRequest(model=flattened_run.model, prompts=flattened_run.prompts + prompt,
+                #                           negative_prompts=flattened_run.negative_prompts + prompt.negative_prompt,
+                #                           interactions=flattened_run.interactions + prompt.interaction)
         last_interaction = None
-        for interaction in flattened_run.interactions:
+        for interaction in [x.interaction for x in flattened_run]:
             if interaction != last_interaction:
                 asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
                                                  loop=client.loop)
             last_interaction = interaction
-        flattened_run.model.to("cpu")
-        if isinstance(flattened_run.model, IntermediateOptimizedModel):
-            flattened_run.mini_vae.to("cpu")
-        for interaction in flattened_run.interactions:
+        flattened_run[0].model.to("cpu")
+        last_interaction = None
+        for interaction in [x.interaction for x in flattened_run]:
             if interaction != last_interaction:
                 asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
                                                  loop=client.loop)
@@ -103,13 +105,13 @@ async def async_model_runner():
     global run_queue
     global interaction_images
     while True:
-        if not run_queue:
+        while len(run_queue) == 0:
             time.sleep(0.01)
-        now = run_queue[
-            0]  # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
+        now = run_queue[0]
+        # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
         images = {}
-        now.model.to('cuda')
+        now[0].model.to('cuda')
         for request in now:
             for i in range(request.amount):
                 prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt,
@@ -119,7 +121,7 @@ async def async_model_runner():
                 asyncio.run_coroutine_threadsafe(
                     coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
         limiter = time.time()
-        async for i in now.model.call(prompts):
+        async for i in now[0].model.call(prompts):
             if type(i) == GenericOutput:  #(self, output, out_type, interaction, index)
                 #This event is final, meaning this image is done.
                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type, index=i.index)
@@ -173,7 +175,7 @@ async def async_model_runner():
 
 def model_runner():
     loop = asyncio.new_event_loop()
-    loop.run_until_complete(async_model_runner)
+    loop.run_until_complete(async_model_runner())
 
 
 @client.event
@@ -192,7 +194,7 @@ async def generate(
         ),
         negative_prompt: Optional[str] = discord.SlashOption(
             name="negative_prompt",
-            required=True,
+            required=False,
             description="The negative prompt to generate off of",
             max_length=1024,
         ),
@@ -214,11 +216,12 @@ async def generate(
     if not model: model = "sd"
     if not images: images = default_images[model]
     if not negative_prompt: negative_prompt = None
-    interaction.response.send_message("Generation has been queued.")
+    await interaction.response.send_message("Generation has been queued.")
     # (self, model, prompt, negative_prompt, amount, interaction)
     prompt_queue.append(FactoryRequest(model=model, prompt=prompt, negative_prompt=negative_prompt, amount=images,
                                        interaction=interaction))
 
 
 threading.Thread(target=model_factory, daemon=True).start()
+threading.Thread(target=model_runner, daemon=True).start()
 client.run(TOKEN)
