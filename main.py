@@ -31,6 +31,15 @@ default_images = {
 }
 images = {}
 
+class UpscaleAndAgainAndEdit(discord.ui.View):
+    def __init__(self, *, timeout=None, prompt):
+        super().__init__(timeout=timeout)
+        self.prompt = prompt
+    @discord.ui.button(label="Again", style=discord.ButtonStyle.primary)
+    async def again_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        prompt_queue.append()
+        button.style = discord.ButtonStyle.secondary
+
 class FactoryRequest:
     def __init__(self, model, prompt, negative_prompt, amount, interaction):
         self.model = model
@@ -79,27 +88,18 @@ def model_factory():
                 asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
                                                  loop=client.loop)
             last_interaction = interaction
-        if flattened_run[0].model.model == None:
+        model_already_loaded = False
+        if len(run_queue) > 0:
+            if run_queue[0][0].model.path == flattened_run[0].model.path:
+                model_already_loaded = True
+        if not model_already_loaded:
             flattened_run[0].model.to("cpu")
-            for interaction in [x.interaction for x in flattened_run]:
-                if interaction != last_interaction:
-                    asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
-                                                     loop=client.loop)
-                last_interaction = interaction
-        else:
-            if flattened_run[0].model.model.device == 'cuda':
-                for interaction in [x.interaction for x in flattened_run]:
-                    if interaction != last_interaction:
-                        asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to gpu"),
-                                                         loop=client.loop)
-                    last_interaction = interaction
-            else:
-                flattened_run[0].model.to('cpu')
-                for interaction in [x.interaction for x in flattened_run]:
-                    if interaction != last_interaction:
-                        asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
-                                                         loop=client.loop)
-                    last_interaction = interaction
+        for interaction in [x.interaction for x in flattened_run]:
+            if interaction != last_interaction:
+                asyncio.run_coroutine_threadsafe(
+                    coro=interaction.edit_original_message(content="Model loaded to gpu" if model_already_loaded else "Model loaded to gpu"),
+                    loop=client.loop)
+            last_interaction = interaction
         run_queue.append(flattened_run)
         prompt_queue.pop(0)
 
@@ -198,13 +198,15 @@ async def async_model_runner():
             if run_queue[1][0].model.path == now[0].model.path:
                 run_queue[1][0].model = now[0].model
                 model_reused = True
-            elif len(run_queue) > 2:
-                if run_queue[2][0].model.path == now[0].model.path:
-                    run_queue[2][0].model = now[0].model.to('cpu')
-                    model_reused = True
-        #if not model_reused: now[0].model.del_model()
-        #del now[0].model
-        now[0].model.to("cpu")
+            # simplify this for a moment
+            #elif len(run_queue) > 2:
+            #    if run_queue[2][0].model.path == now[0].model.path:
+            #        run_queue[2][0].model = now[0].model.to('cpu')
+            #        model_reused = True
+        if not model_reused:
+            now[0].model.del_model()
+            del now[0].model
+        #now[0].model.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
         run_queue.pop(0)
@@ -254,6 +256,7 @@ async def generate(
     if not images: images = default_images[model]
     if not negative_prompt: negative_prompt = ""
     await interaction.response.send_message("Generation has been queued.")
+    print("adding generation")
     # (self, model, prompt, negative_prompt, amount, interaction)
     prompt_queue.append(FactoryRequest(model=model, prompt=prompt, negative_prompt=negative_prompt, amount=images,
                                        interaction=interaction))
