@@ -21,6 +21,7 @@ intents = discord.Intents.all()
 client = discord.Client(intents=intents)
 prompt_queue = []
 run_queue = None
+current_model_path = None
 model_translations = {
     # (self, path, out_type, max_latent, steps, mini_vae)
     #"sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
@@ -70,54 +71,89 @@ class Output:
 def model_factory():
     global prompt_queue
     global run_queue
+    global current_model_path
     while True:
-        while not prompt_queue:
-            time.sleep(0.01)
-        #while run_queue:
-        #    time.sleep(0.01)
-        for idx, prompt in enumerate(prompt_queue):  # self, model, prompt, negative_prompt, amount, interaction
-            if idx == 0:
-                current_model = prompt.model
-                if isinstance(current_model, str):
-                    prompt.model = model_translations[prompt.model]
-                    flattened_run = [prompt]
-                else:
-                    flattened_run = [prompt]
-            else:
-                if prompt.model == current_model:
-                    flattened_run.append(prompt)
-        last_interaction = None
-        for interaction in [x.interaction for x in flattened_run]:
-            if interaction != last_interaction:
-                asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
-                                                 loop=client.loop)
-            last_interaction = interaction
-        model_already_loaded = False
-        if run_queue:
-            if run_queue[0].model.path == flattened_run[0].model.path:
-                model_already_loaded = True
-        if not model_already_loaded:
-            flattened_run[0].model.to("cpu")
-        for interaction in [x.interaction for x in flattened_run]:
-            if interaction != last_interaction:
-                asyncio.run_coroutine_threadsafe(
-                    coro=interaction.edit_original_message(content="Model loaded to gpu" if model_already_loaded else "Model loaded to gpu"),
-                    loop=client.loop)
-            last_interaction = interaction
-        run_queue = flattened_run
-        prompt_queue.pop(0)
+        if prompt_queue != [] and run_queue != None:
+            if prompt_queue[0].model.path == run_queue[0].model.path:
+                run_queue.append(prompt_queue[0])
+                prompt_queue.pop(0)
+        if prompt_queue != [] and run_queue == None: # has to be reevaluated
+            if not prompt_queue[0].model.path == current_model_path:
+                prompt_queue[0].model.to('cpu')
+            tmp_queue = []
+            tmp_path = prompt_queue[0].model.path
+            for prompt in prompt_queue:
+                if not prompt.model.path == tmp_path:
+                    break
+                tmp_queue.append(prompt)
+            run_queue = tmp_queue
+            del tmp_queue
+            gc.collect()
+        time.sleep(0.01)
+
+
+# def model_factory():
+#     global prompt_queue
+#     global run_queue
+#     held_queue = 1
+#     while True:
+#         while prompt_queue == [] or held_queue == run_queue:
+#             time.sleep(0.01)
+#         if prompt_queue != []:
+#             #while run_queue:
+#             #    time.sleep(0.01)
+#             for idx, prompt in enumerate(prompt_queue):  # self, model, prompt, negative_prompt, amount, interaction
+#                 if idx == 0:
+#                     current_model = prompt.model
+#                     if isinstance(current_model, str):
+#                         prompt.model = model_translations[prompt.model]
+#                         flattened_run = [prompt]
+#                     else:
+#                         flattened_run = [prompt]
+#                 else:
+#                     if prompt.model == current_model:
+#                         flattened_run.append(prompt)
+#             last_interaction = None
+#             for interaction in [x.interaction for x in flattened_run]:
+#                 if interaction != last_interaction:
+#                     asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
+#                                                      loop=client.loop)
+#                 last_interaction = interaction
+#             model_already_loaded = False
+#             if run_queue:
+#                 if run_queue[0].model.path == flattened_run[0].model.path:
+#                     model_already_loaded = True
+#             if not model_already_loaded:
+#                 flattened_run[0].model.to("cpu")
+#             for interaction in [x.interaction for x in flattened_run]:
+#                 if interaction != last_interaction:
+#                     asyncio.run_coroutine_threadsafe(
+#                         coro=interaction.edit_original_message(content="Model loaded to gpu" if model_already_loaded else "Model loaded to gpu"),
+#                         loop=client.loop)
+#                 last_interaction = interaction
+#             run_queue = flattened_run
+#             held_queue = flattened_run
+#             prompt_queue.pop(0)
 
 async def async_model_runner():
     global run_queue
     global images
+    global current_model_path
+    last_model = None
     while True:
         while not run_queue:
             time.sleep(0.01)
         now = run_queue
         run_queue = None
+        current_model_path = now[0].model.path
         # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
-        now[0].model.to('cuda')
+        if last_model:
+            if last_model.path == current_model_path:
+                now[0].model = last_model
+        else:
+            now[0].model.to('cuda')
+            last_model.del_model()
         start_time = time.time()
         for request in now:
             for i in range(request.amount):
