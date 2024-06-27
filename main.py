@@ -151,9 +151,12 @@ async def async_model_runner():
         if last_model:
             if last_model.path == current_model_path:
                 now[0].model = last_model
-        else:
-            now[0].model.to('cuda')
-            last_model.del_model()
+            else:
+                last_model.del_model()
+        last_model = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        now[0].model.to('cuda')
         start_time = time.time()
         for request in now:
             for i in range(request.amount):
@@ -231,20 +234,13 @@ async def async_model_runner():
                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(
                         content=str(request.amount) + " images of '" + request.prompt + "' in " + str(round(time.time() - start_time, 2)) + "s", files=sendable_images),
                         loop=client.loop)
-        model_reused = False
-        if run_queue:
-            if run_queue[0].model.path == now[0].model.path:
-                run_queue[0].model = now[0].model
-                model_reused = True
-            # simplify this for a moment
-            #elif len(run_queue) > 2:
-            #    if run_queue[2][0].model.path == now[0].model.path:
-            #        run_queue[2][0].model = now[0].model.to('cpu')
-            #        model_reused = True
-        if not model_reused:
+        if prompt_queue != [] or run_queue != None:
+            print(prompt_queue, run_queue)
+            last_model = now[0].model
+            del now[0].model
+        else:
             now[0].model.del_model()
             del now[0].model
-        #now[0].model.to("cpu")
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -295,7 +291,7 @@ async def generate(
     await interaction.response.send_message("Generation has been queued.")
     print("adding generation")
     # (self, model, prompt, negative_prompt, amount, interaction)
-    prompt_queue.append(FactoryRequest(model=model, prompt=prompt, negative_prompt=negative_prompt, amount=images,
+    prompt_queue.append(FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt, amount=images,
                                        interaction=interaction))
 
 
