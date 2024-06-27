@@ -23,7 +23,7 @@ prompt_queue = []
 run_queue = []
 model_translations = {
     # (self, path, out_type, max_latent, steps, mini_vae)
-    "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=1, steps=25,
+    "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
                                      mini_vae="madebyollin/taesd"),
 }
 default_images = {
@@ -66,35 +66,40 @@ def model_factory():
             if idx == 0:
                 current_model = prompt.model
                 if isinstance(current_model, str):
-                    #flattened_run = RunRequest(model=model_translations[prompt.model], prompts=prompt,
-                    #                           negative_prompts=prompt.negative_prompt,
-                    #                           interactions=[prompt.interaction])
                     prompt.model = model_translations[prompt.model]
                     flattened_run = [prompt]
                 else:
                     flattened_run = [prompt]
-                    #flattened_run = RunRequest(model=prompt.model, prompts=prompt,
-                    #                           negative_prompts=prompt.negative_prompt,
-                    #                           interactions=[prompt.interaction])
             else:
                 if prompt.model == current_model:
                     flattened_run.append(prompt)
-                #flattened_run = RunRequest(model=flattened_run.model, prompts=flattened_run.prompts + prompt,
-                #                           negative_prompts=flattened_run.negative_prompts + prompt.negative_prompt,
-                #                           interactions=flattened_run.interactions + prompt.interaction)
         last_interaction = None
         for interaction in [x.interaction for x in flattened_run]:
             if interaction != last_interaction:
                 asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
                                                  loop=client.loop)
             last_interaction = interaction
-        flattened_run[0].model.to("cpu")
-        last_interaction = None
-        for interaction in [x.interaction for x in flattened_run]:
-            if interaction != last_interaction:
-                asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
-                                                 loop=client.loop)
-            last_interaction = interaction
+        if flattened_run[0].model.model == None:
+            flattened_run[0].model.to("cpu")
+            for interaction in [x.interaction for x in flattened_run]:
+                if interaction != last_interaction:
+                    asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
+                                                     loop=client.loop)
+                last_interaction = interaction
+        else:
+            if flattened_run[0].model.model.device == 'cuda':
+                for interaction in [x.interaction for x in flattened_run]:
+                    if interaction != last_interaction:
+                        asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to gpu"),
+                                                         loop=client.loop)
+                    last_interaction = interaction
+            else:
+                flattened_run[0].model.to('cpu')
+                for interaction in [x.interaction for x in flattened_run]:
+                    if interaction != last_interaction:
+                        asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loaded to cpu"),
+                                                         loop=client.loop)
+                    last_interaction = interaction
         run_queue.append(flattened_run)
         prompt_queue.pop(0)
 
@@ -135,6 +140,8 @@ async def async_model_runner():
                     interactions = list(set(i.interactions))
                     for interaction in interactions:
                         sendable_images = []
+                        current = 0
+                        already_done = 0
                         for idx, image in enumerate(images[interaction]):
                             if image != None:
                                 if image.out_type == 'latent-image':
@@ -144,20 +151,26 @@ async def async_model_runner():
                                         image.save(imagebn, format="JPEG", quality=50)
                                         imagebn.seek(0)
                                         sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
+                                    current += 1
                                 else:
                                     with io.BytesIO() as imagebn:
                                         image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
                                         imagebn.seek(0)
                                         sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
+                                    already_done += 1
                         if sendable_images:
                             for request in now:
                                 if request.interaction == interaction:
                                     this_request = request
                                     break
                             # separating this because it is CONFUSING
-                            current = i.current * len([x for x in i.interactions if x == interactions])
-                            already_done = len([x for x in sendable_images if isinstance(x, GenericOutput)])
-                            progress = ((i.current * 100) / (i.total[0])) * len(i.interactions) + (i.total[0] * [x for x in sendable_images if isinstance(x, GenericOutput)])/ request.amount
+                            #current = i.current * len([x for x in i.interactions if x == interaction])
+                            #already_done = len([x for x in images[interaction] if x.out_type == "image"]) * i.total[0]
+                            print(current, already_done, i.total[0], request.amount)
+                            #progress = 100 * (current + already_done) / (i.total[0] * request.amount)
+                            progress = ((current * i.current) + (already_done * i.total[0])) * 100 / (i.total[0] * request.amount)
+                            print((current * i.current), (already_done * i.total[0]), (i.total[0] * request.amount))
+                            #progress = ((i.current * 100) / (i.total[0])) * len(i.interactions) + (i.total[0] * [x for x in sendable_images if isinstance(x, GenericOutput)])/ request.amount
                             asyncio.run_coroutine_threadsafe(
                                 coro=interaction.edit_original_message(content=str(round(progress, 2)) + "%",
                                    files=sendable_images), loop=client.loop)
@@ -182,12 +195,12 @@ async def async_model_runner():
                         loop=client.loop)
         model_reused = False
         if len(run_queue) > 1:
-            if run_queue[1].model.path == now.model.path:
-                run_queue[1].model = now.model.to('cpu')
+            if run_queue[1][0].model.path == now[0].model.path:
+                run_queue[1][0].model = now[0].model
                 model_reused = True
             elif len(run_queue) > 2:
-                if run_queue[2].model.path == now.model.path:
-                    run_queue[2].model = now.model.to('cpu')
+                if run_queue[2][0].model.path == now[0].model.path:
+                    run_queue[2][0].model = now[0].model.to('cpu')
                     model_reused = True
         #if not model_reused: now[0].model.del_model()
         #del now[0].model

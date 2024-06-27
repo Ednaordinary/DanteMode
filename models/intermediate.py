@@ -65,7 +65,6 @@ class IntermediateOptimizedModel(OptimizedModel):
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
                                                  interaction=prompts[i:i + self.max_latent][idx].interaction,
                                                  index=prompts[i:i + self.max_latent][idx].index)
-                    #yield RunStatus(current=(self.step*len(prompts[i:i+self.max_latent]))+(i*self.steps), total=len(prompts)*self.steps, interactions=[x.interaction for x in prompts[i:i+self.max_latent]])
                     yield RunStatus(current=self.step,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
