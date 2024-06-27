@@ -27,8 +27,9 @@ model_translations = {
     #"sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
     #                                 mini_vae="madebyollin/taesd"),
     "sd": GenericModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25),
-    "sdxl": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25,
-                                     mini_vae="madebyollin/taesdxl"),
+"sdxl": GenericModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25)
+    #"sdxl": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25,
+                                     #mini_vae="madebyollin/taesdxl"),
 }
 default_images = {
     "sd": 10,
@@ -93,50 +94,6 @@ def model_factory():
             gc.collect()
         time.sleep(0.01)
 
-
-# def model_factory():
-#     global prompt_queue
-#     global run_queue
-#     held_queue = 1
-#     while True:
-#         while prompt_queue == [] or held_queue == run_queue:
-#             time.sleep(0.01)
-#         if prompt_queue != []:
-#             #while run_queue:
-#             #    time.sleep(0.01)
-#             for idx, prompt in enumerate(prompt_queue):  # self, model, prompt, negative_prompt, amount, interaction
-#                 if idx == 0:
-#                     current_model = prompt.model
-#                     if isinstance(current_model, str):
-#                         prompt.model = model_translations[prompt.model]
-#                         flattened_run = [prompt]
-#                     else:
-#                         flattened_run = [prompt]
-#                 else:
-#                     if prompt.model == current_model:
-#                         flattened_run.append(prompt)
-#             last_interaction = None
-#             for interaction in [x.interaction for x in flattened_run]:
-#                 if interaction != last_interaction:
-#                     asyncio.run_coroutine_threadsafe(coro=interaction.edit_original_message(content="Model loading..."),
-#                                                      loop=client.loop)
-#                 last_interaction = interaction
-#             model_already_loaded = False
-#             if run_queue:
-#                 if run_queue[0].model.path == flattened_run[0].model.path:
-#                     model_already_loaded = True
-#             if not model_already_loaded:
-#                 flattened_run[0].model.to("cpu")
-#             for interaction in [x.interaction for x in flattened_run]:
-#                 if interaction != last_interaction:
-#                     asyncio.run_coroutine_threadsafe(
-#                         coro=interaction.edit_original_message(content="Model loaded to gpu" if model_already_loaded else "Model loaded to gpu"),
-#                         loop=client.loop)
-#                 last_interaction = interaction
-#             run_queue = flattened_run
-#             held_queue = flattened_run
-#             prompt_queue.pop(0)
-
 async def async_model_runner():
     global run_queue
     global images
@@ -159,30 +116,39 @@ async def async_model_runner():
             asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
         limiter = time.time()
         async for i in now[0].model.call(prompts):
-            if type(i) == GenericOutput:
-                images[i.prompt.interaction][i.prompt.index] = i.output
+            if isinstance(i, GenericOutput):
+                images[i.prompt.interaction][i.prompt.index] = i
                 sendable_images = 0
                 for image in images[i.prompt.interaction]:
-                    if isinstance(GenericOutput): sendable_images += 1
+                    if isinstance(image, GenericOutput): sendable_images += 1
                 if sendable_images == len(images[i.prompt.interaction]) and not finalized[i.prompt.interaction]:
                     sendable_images = []
-                    finalized[i.interaction] = True
-                    for image in images[i.interaction]:
+                    finalized[i.prompt.interaction] = True
+                    for image in images[i.prompt.interaction]:
                         imagebn = io.BytesIO()
-                        image.save(imagebn, format='JPEG', subsampling=0, quality=90)
+                        image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
                         imagebn.seek(0)
-                        sendable_images.append(discord.File(fp=imagebn, filename=str(i.index) + ".jpg"))
+                        sendable_images.append(discord.File(fp=imagebn, filename=str(i.prompt.index) + ".jpg"))
                     if i.prompt.negative_prompt != "":
-                        send_message = ""
+                        send_message = str(len(sendable_images)) + " images of '" + str(i.prompt.prompt) + "' (negative: '" + str(i.prompt.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s"
                     else:
-                        send_message = ""
+                        send_message = str(len(sendable_images)) + " images of '" + str(i.prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                     asyncio.run_coroutine_threadsafe(coro=i.prompt.interaction.edit_original_message(content=send_message, files=sendable_images), loop=client.loop)
-            if type(i) == IntermediateOutput:
-                images[i.interaction][i.index] = i.output
-            if type(i) == RunStatus:
-                if limiter + 1.0 < time.time():
-
-                    limiter = time.time()
+            if isinstance(i, IntermediateOutput):
+                images[i.prompt.interaction][i.prompt.index] = i.output
+            if isinstance(i, RunStatus):
+                pass
+                #if limiter + 1.0 < time.time():
+                #
+                #    limiter = time.time()
+        images = {}
+        if run_queue != None and run_queue[0].model.path == now[0].model.path:
+            run_queue[0].model = now[0].model
+        else:
+            now[0].model.del_model()
+        del now
+        gc.collect()
+        torch.cuda.empty_cache()
 
 # async def async_model_runner():
 #     global run_queue

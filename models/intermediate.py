@@ -27,9 +27,9 @@ class IntermediateOptimizedModel(OptimizedModel):
         del self.model
         del self.intermediates
         del self.mini_vae
+        self.model = None
         gc.collect()
         torch.cuda.empty_cache()
-        self.model = None
 
     async def call(self, prompts):
         self.to("cuda")
