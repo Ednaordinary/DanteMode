@@ -77,17 +77,23 @@ def model_factory():
             if prompt_queue[0].model.path == run_queue[0].model.path:
                 run_queue.append(prompt_queue[0])
                 prompt_queue.pop(0)
+        if prompt_queue != []:
+            print(prompt_queue)
         if prompt_queue != [] and run_queue == None: # has to be reevaluated
             if not prompt_queue[0].model.path == current_model_path:
                 prompt_queue[0].model.to('cpu')
             tmp_queue = []
             tmp_path = prompt_queue[0].model.path
+            pop_amt = 0
             for prompt in prompt_queue:
                 if not prompt.model.path == tmp_path:
                     break
                 tmp_queue.append(prompt)
+                pop_amt += 1
+            for i in range(pop_amt): prompt_queue.pop(0)
             run_queue = tmp_queue
             del tmp_queue
+            del tmp_path
             gc.collect()
         time.sleep(0.01)
 
@@ -150,13 +156,14 @@ async def async_model_runner():
         # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
         prompts = []
         if last_model:
-            if last_model.path == current_model_path:
-                now[0].model = last_model
-            else:
-                last_model.del_model()
-        last_model = None
+            #if last_model.path == current_model_path:
+            now[0].model = last_model
+            #else:
+            #    last_model.del_model()
+        del last_model
         gc.collect()
         torch.cuda.empty_cache()
+        last_model = None
         now[0].model.to('cuda')
         start_time = time.time()
         for request in now:
@@ -196,13 +203,12 @@ async def async_model_runner():
                                     imagebn = io.BytesIO()
                                     tmp_image.save(imagebn, format="JPEG", quality=70)
                                     imagebn.seek(0)
-                                    sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
+                                    sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
                                 else:
                                     imagebn = io.BytesIO()
                                     image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
                                     imagebn.seek(0)
-                                    sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
-                        print(sendable_images)
+                                    sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
                         print([x.filename for x in sendable_images])
                         if not last_images[response.interaction] == sendable_images:
                             last_images[response.interaction] = sendable_images
@@ -269,9 +275,9 @@ async def async_model_runner():
                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(
                         content=str(request.amount) + " images of '" + request.prompt + "' in " + str(round(time.time() - start_time, 2)) + "s", files=sendable_images),
                         loop=client.loop)
-        if prompt_queue != [] or run_queue != None:
-            print(prompt_queue, run_queue)
-            last_model = now[0].model.to('cpu')
+        if run_queue != None:
+            if run_queue.model.path == now[0].model.path:
+                last_model = now[0].model
         else:
             now[0].model.del_model()
             del now[0].model
