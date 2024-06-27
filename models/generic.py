@@ -21,11 +21,12 @@ class Prompt:
 
 
 class GenericOutput:
-    def __init__(self, output, out_type, interaction, index):
+    def __init__(self, output, out_type, prompt): #, interaction, index):
         self.output = output
         self.out_type = out_type,
-        self.interaction = interaction
-        self.index = index
+        self.prompt = prompt
+#        self.interaction = interaction
+#        self.index = index
 
 
 class GenericModel:

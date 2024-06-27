@@ -53,20 +53,12 @@ class FactoryRequest:
         self.amount = amount
         self.interaction = interaction
 
-
-#class RunRequest:
-#    def __init__(self, model, prompts, negative_prompts, interactions):
-#        self.model = model
-#        self.prompts = prompts
-#        self.negative_prompts = negative_prompts
-#        self.interactions = interactions
-
-
-class Output:
-    def __init__(self, output, out_type, index):
-        self.output = output
-        self.out_type = out_type
-        self.index = index
+#probably getting rid of this, it's just adding confusion
+# class Output:
+#     def __init__(self, output, out_type, index):
+#         self.output = output
+#         self.out_type = out_type
+#         self.index = index
 
 def model_factory():
     global prompt_queue
@@ -80,8 +72,10 @@ def model_factory():
         if prompt_queue != []:
             print(prompt_queue)
         if prompt_queue != [] and run_queue == None: # has to be reevaluated
+            device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
                 prompt_queue[0].model.to('cpu')
+                device = 'cpu'
             tmp_queue = []
             tmp_path = prompt_queue[0].model.path
             pop_amt = 0
@@ -89,6 +83,8 @@ def model_factory():
                 if not prompt.model.path == tmp_path:
                     break
                 tmp_queue.append(prompt)
+                asyncio.run_coroutine_threadsafe(
+                    coro=prompt.interaction.edit_original_message(content="Model loaded to " + device), loop=client.loop)
                 pop_amt += 1
             for i in range(pop_amt): prompt_queue.pop(0)
             run_queue = tmp_queue
@@ -145,144 +141,191 @@ async def async_model_runner():
     global run_queue
     global images
     global current_model_path
-    last_images = {}
-    last_model = None
+    finalized = {}
     while True:
         while not run_queue:
             time.sleep(0.01)
         now = run_queue
         run_queue = None
         current_model_path = now[0].model.path
-        # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
-        prompts = []
-        if last_model:
-            #if last_model.path == current_model_path:
-            now[0].model = last_model
-            #else:
-            #    last_model.del_model()
-        del last_model
-        gc.collect()
-        torch.cuda.empty_cache()
-        last_model = None
         now[0].model.to('cuda')
         start_time = time.time()
+        prompts = []
         for request in now:
             for i in range(request.amount):
-                prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt,
-                                      interaction=request.interaction, index=i))
-                if not request.interaction in images:
-                    images[request.interaction] = [None] * request.amount
-                    last_images[request.interaction] = [None] * request.amount
-                asyncio.run_coroutine_threadsafe(
-                    coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
+                prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt, interaction=request.interaction, index=i))
+            images[request.interaction] = [None] * request.amount
+            finalized[request.interaction] = False
+            asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
         limiter = time.time()
         async for i in now[0].model.call(prompts):
-            if type(i) == GenericOutput:  #(self, output, out_type, interaction, index)
-                #This event is final, meaning this image is done.
-                images[i.interaction][i.index] = None
-                gc.collect()
-                torch.cuda.empty_cache()
-                images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
+            if type(i) == GenericOutput:
+                images[i.prompt.interaction][i.prompt.index] = i.output
+                sendable_images = 0
+                for image in images[i.prompt.interaction]:
+                    if isinstance(GenericOutput): sendable_images += 1
+                if sendable_images == len(images[i.prompt.interaction]) and not finalized[i.prompt.interaction]:
+                    sendable_images = []
+                    finalized[i.interaction] = True
+                    for image in images[i.interaction]:
+                        imagebn = io.BytesIO()
+                        image.save(imagebn, format='JPEG', subsampling=0, quality=90)
+                        imagebn.seek(0)
+                        sendable_images.append(discord.File(fp=imagebn, filename=str(i.index) + ".jpg"))
+                    if i.prompt.negative_prompt != "":
+                        send_message = ""
+                    else:
+                        send_message = ""
+                    asyncio.run_coroutine_threadsafe(coro=i.prompt.interaction.edit_original_message(content=send_message, files=sendable_images), loop=client.loop)
             if type(i) == IntermediateOutput:
-                #output = i.output.to('cpu', non_blocking=True)
-                images[i.interaction][i.index] = None
-                gc.collect()
-                torch.cuda.empty_cache()
-                images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
+                images[i.interaction][i.index] = i.output
             if type(i) == RunStatus:
                 if limiter + 1.0 < time.time():
-                    interactions = list(set(i.interactions))
-                    for response in now:
-                        sendable_images = []
-                        for idx, image in enumerate(images[response.interaction]):
-                            if image != None:
-                                if image.out_type == 'latent-image':
-                                    tmp_image = image.output.to('cpu', non_blocking=False)
-                                    tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
-                                        (128, 128))
-                                    imagebn = io.BytesIO()
-                                    tmp_image.save(imagebn, format="JPEG", quality=70)
-                                    imagebn.seek(0)
-                                    sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
-                                else:
-                                    imagebn = io.BytesIO()
-                                    image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
-                                    imagebn.seek(0)
-                                    sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
-                        print([x.filename for x in sendable_images])
-                        if not last_images[response.interaction] == sendable_images:
-                            last_images[response.interaction] = sendable_images
-                            current = 0
-                            for x in i.interactions:
-                                if x == response.interaction:
-                                    current += 1
-                            already_done = len(
-                                [x for x in images[response.interaction] if x is not None and x.out_type == "image"])
-                            progress = ((current * i.current) + (already_done * i.total[0])) * 100 / (
-                                        i.total[0] * response.amount)
-                            asyncio.run_coroutine_threadsafe(
-                                     coro=response.interaction.edit_original_message(content=str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s",
-                                        files=sendable_images), loop=client.loop)
+
                     limiter = time.time()
-                    #i no longer like this
-                    #for interaction in interactions:
-                        # sendable_images = []
-                        # for idx, image in enumerate(images[interaction]):
-                        #     if image != None:
-                        #         if image.out_type == 'latent-image':
-                        #             image = image.output.to('cpu', non_blocking=True)
-                        #             image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((128, 128))
-                        #             with io.BytesIO() as imagebn:
-                        #                 image.save(imagebn, format="JPEG", quality=50)
-                        #                 imagebn.seek(0)
-                        #                 sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
-                        #         else:
-                        #             with io.BytesIO() as imagebn:
-                        #                 image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
-                        #                 imagebn.seek(0)
-                        #                 sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
-                        # #if sendable_images:
-                        # current = 0
-                        # for x in i.interactions:
-                        #     if x == interaction:
-                        #         current += 1
-                        # already_done = len([x for x in images[interaction] if x is not None and x.out_type == "image"])
-                        # print(images[interaction])
-                        # #already_done = len([x for x in images[interaction] if x.out_type == "image"]) * i.total[0]
-                        # print(current, already_done, i.total[0], request.amount)
-                        # #progress = 100 * (current + already_done) / (i.total[0] * request.amount)
-                        # progress = ((current * i.current) + (already_done * i.total[0])) * 100 / (i.total[0] * request.amount)
-                        # print((current * i.current), (already_done * i.total[0]), (i.total[0] * request.amount))
-                        # #progress = ((i.current * 100) / (i.total[0])) * len(i.interactions) + (i.total[0] * [x for x in sendable_images if isinstance(x, GenericOutput)])/ request.amount
-                        # asyncio.run_coroutine_threadsafe(
-                        #     coro=interaction.edit_original_message(content=str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s",
-                        #        files=sendable_images), loop=client.loop)
-        for request in now:
-            sendable_images = []
-            for idx, image in enumerate(images[request.interaction]):
-                if image != None:
-                    with io.BytesIO() as imagebn:
-                        image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
-                        imagebn.seek(0)
-                        sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
-            if sendable_images != []:
-                if request.negative_prompt != "":
-                    asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content=str(
-                        request.amount) + " images of '" + str(request.prompt) + "' + (negative: '" + str(request.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s",
-                                                                                                    files=sendable_images),
-                                                     loop=client.loop)
-                else:
-                    asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(
-                        content=str(request.amount) + " images of '" + request.prompt + "' in " + str(round(time.time() - start_time, 2)) + "s", files=sendable_images),
-                        loop=client.loop)
-        if run_queue != None:
-            if run_queue.model.path == now[0].model.path:
-                last_model = now[0].model
-        else:
-            now[0].model.del_model()
-            del now[0].model
-        gc.collect()
-        torch.cuda.empty_cache()
+
+# async def async_model_runner():
+#     global run_queue
+#     global images
+#     global current_model_path
+#     last_images = {}
+#     last_model = None
+#     while True:
+#         while not run_queue:
+#             time.sleep(0.01)
+#         now = run_queue
+#         run_queue = None
+#         current_model_path = now[0].model.path
+#         # this is a list of FactoryRequests. self, model, prompt, negative_prompt, amount, interaction
+#         prompts = []
+#         if last_model:
+#             #if last_model.path == current_model_path:
+#             now[0].model = last_model
+#             #else:
+#             #    last_model.del_model()
+#         del last_model
+#         gc.collect()
+#         torch.cuda.empty_cache()
+#         last_model = None
+#         now[0].model.to('cuda')
+#         start_time = time.time()
+#         for request in now:
+#             for i in range(request.amount):
+#                 prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt,
+#                                       interaction=request.interaction, index=i))
+#                 if not request.interaction in images:
+#                     images[request.interaction] = [None] * request.amount
+#                     last_images[request.interaction] = [None] * request.amount
+#                 asyncio.run_coroutine_threadsafe(
+#                     coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
+#         limiter = time.time()
+#         async for i in now[0].model.call(prompts):
+#             if type(i) == GenericOutput:  #(self, output, out_type, interaction, index)
+#                 #This event is final, meaning this image is done.
+#                 images[i.interaction][i.index] = None
+#                 gc.collect()
+#                 torch.cuda.empty_cache()
+#                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
+#             if type(i) == IntermediateOutput:
+#                 #output = i.output.to('cpu', non_blocking=True)
+#                 images[i.interaction][i.index] = None
+#                 gc.collect()
+#                 torch.cuda.empty_cache()
+#                 images[i.interaction][i.index] = Output(output=i.output, out_type=i.out_type[0], index=i.index)
+#             if type(i) == RunStatus:
+#                 if limiter + 1.0 < time.time():
+#                     interactions = list(set(i.interactions))
+#                     for response in now:
+#                         sendable_images = []
+#                         for idx, image in enumerate(images[response.interaction]):
+#                             if image != None:
+#                                 if image.out_type == 'latent-image':
+#                                     tmp_image = image.output.to('cpu', non_blocking=False)
+#                                     tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
+#                                         (128, 128))
+#                                     imagebn = io.BytesIO()
+#                                     tmp_image.save(imagebn, format="JPEG", quality=70)
+#                                     imagebn.seek(0)
+#                                     sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
+#                                 else:
+#                                     imagebn = io.BytesIO()
+#                                     image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
+#                                     imagebn.seek(0)
+#                                     sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
+#                         print([x.filename for x in sendable_images])
+#                         if not last_images[response.interaction] == sendable_images:
+#                             last_images[response.interaction] = sendable_images
+#                             current = 0
+#                             for x in i.interactions:
+#                                 if x == response.interaction:
+#                                     current += 1
+#                             already_done = len(
+#                                 [x for x in images[response.interaction] if x is not None and x.out_type == "image"])
+#                             progress = ((current * i.current) + (already_done * i.total[0])) * 100 / (
+#                                         i.total[0] * response.amount)
+#                             asyncio.run_coroutine_threadsafe(
+#                                      coro=response.interaction.edit_original_message(content=str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s",
+#                                         files=sendable_images), loop=client.loop)
+#                     limiter = time.time()
+#                     #i no longer like this
+#                     #for interaction in interactions:
+#                         # sendable_images = []
+#                         # for idx, image in enumerate(images[interaction]):
+#                         #     if image != None:
+#                         #         if image.out_type == 'latent-image':
+#                         #             image = image.output.to('cpu', non_blocking=True)
+#                         #             image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((128, 128))
+#                         #             with io.BytesIO() as imagebn:
+#                         #                 image.save(imagebn, format="JPEG", quality=50)
+#                         #                 imagebn.seek(0)
+#                         #                 sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
+#                         #         else:
+#                         #             with io.BytesIO() as imagebn:
+#                         #                 image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
+#                         #                 imagebn.seek(0)
+#                         #                 sendable_images.append(discord.File(fp=imagebn, filename=str(idx) + ".jpg"))
+#                         # #if sendable_images:
+#                         # current = 0
+#                         # for x in i.interactions:
+#                         #     if x == interaction:
+#                         #         current += 1
+#                         # already_done = len([x for x in images[interaction] if x is not None and x.out_type == "image"])
+#                         # print(images[interaction])
+#                         # #already_done = len([x for x in images[interaction] if x.out_type == "image"]) * i.total[0]
+#                         # print(current, already_done, i.total[0], request.amount)
+#                         # #progress = 100 * (current + already_done) / (i.total[0] * request.amount)
+#                         # progress = ((current * i.current) + (already_done * i.total[0])) * 100 / (i.total[0] * request.amount)
+#                         # print((current * i.current), (already_done * i.total[0]), (i.total[0] * request.amount))
+#                         # #progress = ((i.current * 100) / (i.total[0])) * len(i.interactions) + (i.total[0] * [x for x in sendable_images if isinstance(x, GenericOutput)])/ request.amount
+#                         # asyncio.run_coroutine_threadsafe(
+#                         #     coro=interaction.edit_original_message(content=str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s",
+#                         #        files=sendable_images), loop=client.loop)
+#         for request in now:
+#             sendable_images = []
+#             for idx, image in enumerate(images[request.interaction]):
+#                 if image != None:
+#                     with io.BytesIO() as imagebn:
+#                         image.output.save(imagebn, format="JPEG", subsampling=0, quality=90)
+#                         imagebn.seek(0)
+#                         sendable_images.append(discord.File(fp=imagebn, filename=str(image.index) + ".jpg"))
+#             if sendable_images != []:
+#                 if request.negative_prompt != "":
+#                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content=str(
+#                         request.amount) + " images of '" + str(request.prompt) + "' + (negative: '" + str(request.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s",
+#                                                                                                     files=sendable_images),
+#                                                      loop=client.loop)
+#                 else:
+#                     asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(
+#                         content=str(request.amount) + " images of '" + request.prompt + "' in " + str(round(time.time() - start_time, 2)) + "s", files=sendable_images),
+#                         loop=client.loop)
+#         if run_queue != None:
+#             if run_queue.model.path == now[0].model.path:
+#                 last_model = now[0].model
+#         else:
+#             now[0].model.del_model()
+#             del now[0].model
+#         gc.collect()
+#         torch.cuda.empty_cache()
 
 
 def model_runner():

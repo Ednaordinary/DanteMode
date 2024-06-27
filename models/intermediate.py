@@ -61,8 +61,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
-                                                 interaction=prompts[i:i + self.max_latent][idx].interaction,
-                                                 index=prompts[i:i + self.max_latent][idx].index)
+                                                 prompt=prompts[i:i + self.max_latent][idx])
                     yield RunStatus(current=self.step,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
@@ -70,7 +69,6 @@ class IntermediateOptimizedModel(OptimizedModel):
                 time.sleep(0.01)
             for idx, out in enumerate(self.out[0]):
                 yield GenericOutput(output=out, out_type=self.out_type,
-                                    interaction=prompts[i:i + self.max_latent][idx].interaction,
-                                    index=prompts[i:i + self.max_latent][idx].index)
+                                    prompt=prompts[i:i + self.max_latent][idx])
             self.intermediates = None
             self.step = 0
