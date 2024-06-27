@@ -14,6 +14,6 @@ class OptimizedModel(GenericModel):
 
     async def call(self, prompts):
         self.to("cuda")
-        self.helper.set_params(cache_interval=3, cache_branch_id=0)
+        self.helper.set_params(cache_interval=1, cache_branch_id=0)
         self.helper.enable()
         super().call(prompts)

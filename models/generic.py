@@ -1,5 +1,6 @@
 from diffusers import DiffusionPipeline
 import torch
+import time
 import threading
 import gc
 
@@ -50,7 +51,7 @@ class GenericModel:
         self.to("cuda")
 
         def threaded_model(self, model, prompts, negative_prompts, steps, callback):
-            self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback)
+            self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback, callback_steps=1)
 
         def progress_callback(i, t, latents):
             self.step = i
@@ -59,16 +60,18 @@ class GenericModel:
             model_thread = threading.Thread(target=threaded_model,
                                             args=[self, self.model, [x.prompt for x in prompts[i:i + self.max_latent]],
                                                   [x.negative_prompt for x in prompts[i:i + self.max_latent]],
-                                                  self.steps])
+                                                  self.steps, progress_callback])
             model_thread.start()
             step = 0
+            self.step = 0
             while model_thread.is_alive():
                 if step != self.step:
                     yield RunStatus(current=self.step,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
-                step = self.step
-            for idx, out in enumerate(self.out):
+                    step = self.step
+                time.sleep(0.01)
+            for idx, out in enumerate(self.out[0]):
                 yield GenericOutput(output=out, out_type=self.out_type,
                                     interaction=prompts[i:i + self.max_latent][idx].interaction,
                                     index=prompts[i:i + self.max_latent][idx].index)

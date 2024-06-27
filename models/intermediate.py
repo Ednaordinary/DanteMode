@@ -59,9 +59,6 @@ class IntermediateOptimizedModel(OptimizedModel):
             while model_thread.is_alive():
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
-                        #intermediate = intermediate.to('cpu', non_blocking=True)
-                        #intermediate = numpy_to_pil((intermediate / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize((256, 256))
-                        #intermediates should be handled only when we actually want to send them
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
                                                  interaction=prompts[i:i + self.max_latent][idx].interaction,
                                                  index=prompts[i:i + self.max_latent][idx].index)
