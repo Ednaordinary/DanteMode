@@ -72,3 +72,5 @@ class IntermediateOptimizedModel(OptimizedModel):
                 yield GenericOutput(output=out, out_type=self.out_type,
                                     interaction=prompts[i:i + self.max_latent][idx].interaction,
                                     index=prompts[i:i + self.max_latent][idx].index)
+            self.intermediates = None
+            self.step = 0
