@@ -29,7 +29,7 @@ class IntermediateOptimizedModel(OptimizedModel):
         del self.model
         del self.intermediates
         del self.mini_vae
-        self.model = None
+        del self.helper
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -77,3 +77,5 @@ class IntermediateOptimizedModel(OptimizedModel):
             yield FinalOutput(outputs=outputs)
             self.intermediates = None
             self.step = 0
+            gc.collect()
+            torch.cuda.empty_cache()

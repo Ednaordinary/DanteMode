@@ -50,7 +50,6 @@ class GenericModel:
         del self.model
         gc.collect()
         torch.cuda.empty_cache()
-        self.model = None
 
     async def call(self, prompts):
         self.to("cuda")

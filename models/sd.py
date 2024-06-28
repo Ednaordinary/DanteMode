@@ -2,6 +2,7 @@ from DeepCache import DeepCacheSDHelper
 from .intermediate import IntermediateOptimizedModel
 from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler
 import torch
+import gc
 
 class SDXLModel(IntermediateOptimizedModel):
     def to(self, device):
