@@ -11,6 +11,7 @@ import threading
 import asyncio
 import torch
 import time
+import PIL
 import gc
 import io
 import os
@@ -135,26 +136,46 @@ async def async_model_runner():
             #             send_message = str(len(sendable_images)) + " images of '" + str(i.prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
             #         asyncio.run_coroutine_threadsafe(coro=i.prompt.interaction.edit_original_message(content=send_message, files=sendable_images), loop=client.loop)
             if isinstance(i, FinalOutput):
-                for output in FinalOutput:
+                for output in i.outputs:
                     images[output.prompt.interaction][output.prompt.index] = output
-                for interaction in list(set([x.prompt.interaction for x in FinalOutput])):
+                for interaction in list(set([x.prompt.interaction for x in i.outputs])):
                     if not finalized[interaction]:
                         sendable_images = []
                         for image in images[interaction]:
                             if isinstance(image, GenericOutput):
                                 imagebn = io.BytesIO()
                                 image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
+                                imagebn.seek(0)
                                 sendable_images.append(imagebn)
                             if isinstance(image, IntermediateOutput):
                                 if isinstance(image.output, PIL.Image.Image):
                                     imagebn = io.BytesIO()
                                     image.output.save(imagebn, format='JPEG', quality=80)
+                                    imagebn.seek(0)
                                     sendable_images.append(imagebn)
                                 else:
-                                    tmp_image = image.output.to('cpu', non_blocking=False)
+                                    tmp_image = image.output.to('cpu', non_blocking=True)
                                     tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
                                                                              (128, 128))
-                                    images[image.prompt.interaction][image.prompt.index] = tmp_image
+                                    images[image.prompt.interaction][image.prompt.index].output = tmp_image
+                                    imagebn = io.BytesIO()
+                                    tmp_image.save(imagebn, format='JPEG', quality=80)
+                                    imagebn.seek(0)
+                                    sendable_images.append(imagebn)
+                        output_count = 0
+                        for image in images[interaction]:
+                            if isinstance(image, GenericOutput):
+                                output_count += 1
+                        if output_count == len(images[interaction]):
+                            finalized[interaction] = True
+                        prompt = images[output.prompt.interaction][0].prompt
+                        if prompt.negative_prompt != "":
+                            send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' (negative: '" + str(prompt.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s"
+                        else:
+                            send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
+                        asyncio.run_coroutine_threadsafe(
+                            coro=interaction.edit_original_message(content=send_message,
+                                                                            files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
             if isinstance(i, IntermediateOutput):
                 images[i.prompt.interaction][i.prompt.index] = i.output
             if isinstance(i, RunStatus):
