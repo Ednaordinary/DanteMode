@@ -13,11 +13,12 @@ class RunStatus:
 
 
 class Prompt:
-    def __init__(self, prompt, negative_prompt, interaction, index):
+    def __init__(self, prompt, negative_prompt, interaction, index, parent_amount):
         self.prompt = prompt
         self.negative_prompt = negative_prompt
         self.interaction = interaction
         self.index = index
+        self.parent_amount = parent_amount
 
 
 class GenericOutput:

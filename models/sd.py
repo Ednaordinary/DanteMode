@@ -21,4 +21,4 @@ class SDXLModel(IntermediateOptimizedModel):
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
         self.mini_vae.enable_slicing()
-        self.mini_vae.enable_tiling()
+        #self.mini_vae.enable_tiling()

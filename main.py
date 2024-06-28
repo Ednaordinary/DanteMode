@@ -114,7 +114,7 @@ async def async_model_runner():
         prompts = []
         for request in now:
             for i in range(request.amount):
-                prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt, interaction=request.interaction, index=i))
+                prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt, interaction=request.interaction, index=i, parent_amount=request.amount))
             images[request.interaction] = [None] * request.amount
             finalized[request.interaction] = False
             asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
@@ -180,7 +180,6 @@ async def async_model_runner():
                                 for_decoding = []
                                 for image in images[interaction]:
                                     if image != None:
-                                        print(image)
                                         if isinstance(image.output, PIL.Image.Image):
                                             imagebn = io.BytesIO()
                                             image.output.save(imagebn, format='JPEG', quality=80)
@@ -199,15 +198,22 @@ async def async_model_runner():
                                             # imagebn.seek(0)
                                             # sendable_images.append(imagebn)
                                 if for_decoding != None:
-                                    tmp_image = now[0].model.mini_vae.decode(for_decoding).sample
+                                    print("for_decode len:", len(for_decoding))
+                                    print([x.output.unsqueeze(0).shape for x in for_decoding])
+                                    print(len([x.output.unsqueeze(0) for x in for_decoding]))
+                                    print(torch.cat([x.output.unsqueeze(0) for x in for_decoding], dim=0).shape)
+                                    tmp_image = now[0].model.mini_vae.decode(torch.cat([x.output.unsqueeze(0) for x in for_decoding], dim=0)).sample
                                     tmp_image = tmp_image.to('cpu', non_blocking=True)
-                                    tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())
+                                    print("for_decode len:", len(for_decoding))
+                                    print(tmp_image.shape)
                                     for idx, image in enumerate(tmp_image):
+                                        print(idx)
+                                        image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                         imagebn = io.BytesIO()
                                         image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
                                         sendable_images[for_decoding[idx].prompt.index] = imagebn
-                                sendable_images = [x for x in sendable_images if ]
+                                sendable_images = [x for x in sendable_images if x != None]
                                 output_count = 0
                                 for image in images[interaction]:
                                     if isinstance(image, GenericOutput) and not isinstance(image, IntermediateOutput):
@@ -220,7 +226,6 @@ async def async_model_runner():
                                 for x in i.interactions:
                                     if x == interaction:
                                         current += 1
-                                this_request = None
                                 progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
                                             i.total[0] * this_request.amount)
                                 send_message = str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s"
