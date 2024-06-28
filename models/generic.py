@@ -43,8 +43,8 @@ class GenericModel:
     def to(self, device):
         if not self.model:
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
-            self.model.vae.enable_slicing()
         self.model = self.model.to(device)
+        self.model.vae.enable_slicing()
 
     def del_model(self):
         del self.model

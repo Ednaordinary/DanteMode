@@ -2,6 +2,7 @@ import sys
 
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel
+from models.sd import SDXLModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
 from dotenv import load_dotenv
@@ -28,9 +29,11 @@ model_translations = {
     #"sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
     #                                 mini_vae="madebyollin/taesd"),
     "sd": GenericModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25),
-"sdxl": GenericModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25)
+    #"sdxl": GenericModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25)
     #"sdxl": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25,
-                                     #mini_vae="madebyollin/taesdxl"),
+    #                                 mini_vae="madebyollin/taesdxl"),
+    "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25,
+        mini_vae="madebyollin/taesdxl"),
 }
 default_images = {
     "sd": 10,
@@ -139,7 +142,9 @@ async def async_model_runner():
                 for output in i.outputs:
                     images[output.prompt.interaction][output.prompt.index] = output
                 for interaction in list(set([x.prompt.interaction for x in i.outputs])):
+                    print(interaction)
                     if not finalized[interaction]:
+                        print("unfinalized")
                         sendable_images = []
                         for image in images[interaction]:
                             if isinstance(image, GenericOutput):
@@ -154,7 +159,7 @@ async def async_model_runner():
                                     imagebn.seek(0)
                                     sendable_images.append(imagebn)
                                 else:
-                                    tmp_image = image.output.to('cpu', non_blocking=True)
+                                    tmp_image = image.output
                                     tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
                                                                              (128, 128))
                                     images[image.prompt.interaction][image.prompt.index].output = tmp_image

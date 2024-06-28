@@ -9,7 +9,6 @@ class OptimizedModel(GenericModel):
         self.model.scheduler = DPMSolverMultistepScheduler.from_config(self.model.scheduler.config,
                                                                        use_karras_sigmas=True)  #, use_lu_lambdas=True)
         self.model.scheduler.algorithm_type = "dpmsolver++"
-        self.model.vae.enable_slicing()
         self.helper = DeepCacheSDHelper(pipe=self.model)
 
     async def call(self, prompts):

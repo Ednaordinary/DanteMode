@@ -22,6 +22,8 @@ class IntermediateOptimizedModel(OptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
+        self.mini_vae.enable_slicing()
+        self.mini_vae.enable_tiling()
 
     def del_model(self):
         del self.model
@@ -38,9 +40,10 @@ class IntermediateOptimizedModel(OptimizedModel):
 
         def intermediate_callback(i, t, latents):
             #latents = kwargs["latents"]
-            sample = self.mini_vae.decode(latents).sample
+            #print(latents)
+            #sample = self.mini_vae.decode(latents).sample
             self.step = i
-            self.intermediates = sample
+            self.intermediates = latents
             self.intermediate_update = True
 
         def threaded_model(prompts, negative_prompts, steps, callback):
