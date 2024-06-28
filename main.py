@@ -119,72 +119,32 @@ async def async_model_runner():
             finalized[request.interaction] = False
             asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
         limiter = time.time()
-        async for i in now[0].model.call(prompts):
-            if isinstance(i, FinalOutput):
-                for output in i.outputs:
-                    images[output.prompt.interaction][output.prompt.index] = output
-                for interaction in list(set([x.prompt.interaction for x in i.outputs])):
-                    print(interaction)
-                    if not finalized[interaction]:
-                        print("unfinalized")
-                        sendable_images = []
-                        for image in images[interaction]:
-                            if isinstance(image, GenericOutput):
-                                imagebn = io.BytesIO()
-                                image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
-                                imagebn.seek(0)
-                                sendable_images.append(imagebn)
-                            if isinstance(image, IntermediateOutput):
-                                if isinstance(image.output, PIL.Image.Image):
-                                    imagebn = io.BytesIO()
-                                    image.output.save(imagebn, format='JPEG', quality=80)
-                                    imagebn.seek(0)
-                                    sendable_images.append(imagebn)
-                                else:
-                                    tmp_image = now[0].model.mini_vae(image.output).sample
-                                    tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
-                                                                             (128, 128))
-                                    images[image.prompt.interaction][image.prompt.index].output = tmp_image
-                                    imagebn = io.BytesIO()
-                                    tmp_image.save(imagebn, format='JPEG', quality=80)
-                                    imagebn.seek(0)
-                                    sendable_images.append(imagebn)
-                        output_count = 0
-                        for image in images[interaction]:
-                            if isinstance(image, GenericOutput):
-                                output_count += 1
-                        if output_count == len(images[interaction]):
-                            finalized[interaction] = True
-                        prompt = images[interaction][0].prompt
-                        if prompt.negative_prompt != "":
-                            send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' (negative: '" + str(prompt.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s"
-                        else:
-                            send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
-                        asyncio.run_coroutine_threadsafe(
-                            coro=interaction.edit_original_message(content=send_message,
-                                                                            files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
-            if isinstance(i, IntermediateOutput):
-                images[i.prompt.interaction][i.prompt.index] = i
-            if isinstance(i, RunStatus):
-                if limiter + 1.0 < time.time():
-                    for interaction in list(set(i.interactions)):
+        with torch.no_grad():
+            async for i in now[0].model.call(prompts):
+                if isinstance(i, FinalOutput):
+                    for output in i.outputs:
+                        images[output.prompt.interaction][output.prompt.index] = output
+                    for interaction in list(set([x.prompt.interaction for x in i.outputs])):
                         print(interaction)
                         if not finalized[interaction]:
                             print("unfinalized")
                             sendable_images = []
                             for image in images[interaction]:
-                                if image != None:
-                                    print(image)
+                                if isinstance(image, GenericOutput):
+                                    imagebn = io.BytesIO()
+                                    image.output.save(imagebn, format='JPEG', subsampling=0, quality=90)
+                                    imagebn.seek(0)
+                                    sendable_images.append(imagebn)
+                                if isinstance(image, IntermediateOutput):
                                     if isinstance(image.output, PIL.Image.Image):
                                         imagebn = io.BytesIO()
                                         image.output.save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
                                         sendable_images.append(imagebn)
                                     else:
-                                        print(image.output.shape)
-                                        tmp_image = now[0].model.mini_vae(torch.tensor(image.output)).sample
+                                        tmp_image = now[0].model.mini_vae(image.output).sample
                                         tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
-                                            (128, 128))
+                                                                                 (128, 128))
                                         images[image.prompt.interaction][image.prompt.index].output = tmp_image
                                         imagebn = io.BytesIO()
                                         tmp_image.save(imagebn, format='JPEG', quality=80)
@@ -197,30 +157,78 @@ async def async_model_runner():
                             if output_count == len(images[interaction]):
                                 finalized[interaction] = True
                             prompt = images[interaction][0].prompt
-                            current = 0
-                            for x in i.interactions:
-                                if x == interaction:
-                                    current += 1
-                            this_request = None
-                            for prompt in now:
-                                if prompt.interaction == interaction:
-                                    this_request = prompt
-                                    break
-                            progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
-                                        i.total[0] * len(this_request.amount))
                             if prompt.negative_prompt != "":
-                                send_message = str(len(sendable_images)) + " images of '" + str(
-                                    prompt.prompt) + "' (negative: '" + str(prompt.negative_prompt) + "') in " + str(
-                                    round(time.time() - start_time, 2)) + "s"
+                                send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' (negative: '" + str(prompt.negative_prompt) + "') in " + str(round(time.time() - start_time, 2)) + "s"
                             else:
-                                send_message = str(len(sendable_images)) + " images of '" + str(
-                                    prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
+                                send_message = str(len(sendable_images)) + " images of '" + str(prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                             asyncio.run_coroutine_threadsafe(
                                 coro=interaction.edit_original_message(content=send_message,
-                                                                       files=[discord.File(fp=x, filename=str(idx) + ".jpg")
-                                                                              for idx, x in enumerate(sendable_images)]),
-                                loop=client.loop)
-
+                                                                                files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
+                if isinstance(i, IntermediateOutput):
+                    images[i.prompt.interaction][i.prompt.index] = i
+                if isinstance(i, RunStatus):
+                    if limiter + 1.0 < time.time():
+                        for interaction in list(set(i.interactions)):
+                            print(interaction)
+                            if not finalized[interaction]:
+                                print("unfinalized")
+                                for prompt in now:
+                                    if prompt.interaction == interaction:
+                                        this_request = prompt
+                                        break
+                                sendable_images = [None] * this_request.amount
+                                for_decoding = []
+                                for image in images[interaction]:
+                                    if image != None:
+                                        print(image)
+                                        if isinstance(image.output, PIL.Image.Image):
+                                            imagebn = io.BytesIO()
+                                            image.output.save(imagebn, format='JPEG', quality=80)
+                                            imagebn.seek(0)
+                                            sendable_images[image.prompt.index] = imagebn
+                                        else:
+                                            for_decoding.append(image)
+                                            # print(image.output.unsqueeze(0).shape)
+                                            # tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
+                                            # tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                            # tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
+                                            #     (128, 128))
+                                            # images[image.prompt.interaction][image.prompt.index].output = tmp_image
+                                            # imagebn = io.BytesIO()
+                                            # tmp_image.save(imagebn, format='JPEG', quality=80)
+                                            # imagebn.seek(0)
+                                            # sendable_images.append(imagebn)
+                                if for_decoding != None:
+                                    tmp_image = now[0].model.mini_vae.decode(for_decoding).sample
+                                    tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                    tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())
+                                    for idx, image in enumerate(tmp_image):
+                                        imagebn = io.BytesIO()
+                                        image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
+                                        imagebn.seek(0)
+                                        sendable_images[for_decoding[idx].prompt.index] = imagebn
+                                sendable_images = [x for x in sendable_images if ]
+                                output_count = 0
+                                for image in images[interaction]:
+                                    if isinstance(image, GenericOutput) and not isinstance(image, IntermediateOutput):
+                                        output_count += 1
+                                if output_count == len(images[interaction]):
+                                    finalized[interaction] = True
+                                    print("setting finalized")
+                                prompt = images[interaction][0].prompt
+                                current = 0
+                                for x in i.interactions:
+                                    if x == interaction:
+                                        current += 1
+                                this_request = None
+                                progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
+                                            i.total[0] * this_request.amount)
+                                send_message = str(round(progress, 2)) + "% " + str(round(time.time() - start_time, 2)) + "s"
+                                asyncio.run_coroutine_threadsafe(
+                                    coro=interaction.edit_original_message(content=send_message,
+                                                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")
+                                                                                  for idx, x in enumerate(sendable_images)]),
+                                    loop=client.loop)
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
             print(run_queue)
