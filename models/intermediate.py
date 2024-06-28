@@ -42,6 +42,7 @@ class IntermediateOptimizedModel(OptimizedModel):
             #latents = kwargs["latents"]
             #print(latents)
             #sample = self.mini_vae.decode(latents).sample
+            print(latents.shape)
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
