@@ -28,13 +28,9 @@ class GenericOutput:
 #        self.interaction = interaction
 #        self.index = index
 
-class GenericOutput:
-    def __init__(self, output, out_type, prompt): #, interaction, index):
-        self.output = output
-        self.out_type = out_type,
-        self.prompt = prompt
-#        self.interaction = interaction
-#        self.index = index
+class FinalOutput:
+    def __init__(self, outputs):
+        self.outputs = outputs
 
 class GenericModel:
     def __init__(self, path, out_type, max_latent, steps):
@@ -80,7 +76,9 @@ class GenericModel:
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
                     step = self.step
                 time.sleep(0.01)
+            outputs = []
             for idx, out in enumerate(self.out[0]):
-                yield GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx])
+                outputs.append(GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
+            yield FinalOutput(outputs=outputs)
                                     #interaction=prompts[i:i + self.max_latent][idx].interaction,
                                     #index=prompts[i:i + self.max_latent][idx].index)

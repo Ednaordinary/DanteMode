@@ -1,4 +1,4 @@
-from .generic import GenericOutput, RunStatus
+from .generic import GenericOutput, RunStatus, FinalOutput
 from .optimized import OptimizedModel
 from diffusers import AutoencoderTiny
 import threading
@@ -67,8 +67,10 @@ class IntermediateOptimizedModel(OptimizedModel):
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
                     self.intermediate_update = False
                 time.sleep(0.01)
+            outputs = []
             for idx, out in enumerate(self.out[0]):
-                yield GenericOutput(output=out, out_type=self.out_type,
-                                    prompt=prompts[i:i + self.max_latent][idx])
+                outputs.append(GenericOutput(output=out, out_type=self.out_type,
+                                    prompt=prompts[i:i + self.max_latent][idx]))
+            yield FinalOutput(outputs=outputs)
             self.intermediates = None
             self.step = 0
