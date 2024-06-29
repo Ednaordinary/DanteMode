@@ -1,3 +1,6 @@
+import numpy as np
+from diffusers.utils import numpy_to_pil
+
 from .generic import GenericOutput, RunStatus, FinalOutput
 from .optimized import OptimizedModel
 from diffusers import AutoencoderTiny
@@ -5,6 +8,7 @@ import threading
 import torch
 import time
 import gc
+from PIL import Image
 
 
 class IntermediateOutput(GenericOutput):
@@ -40,23 +44,34 @@ class IntermediateOptimizedModel(OptimizedModel):
         self.to("cuda")
         self.helper.set_params(cache_interval=3, cache_branch_id=0)
         self.helper.enable()
+        #self.stack = []
 
-        def intermediate_callback(i, t, latents):
+        def intermediate_callback(pipe, i, t, kwargs):
+            latents = kwargs["latents"]
+            #decoded = self.mini_vae.decode(latents).sample
+            for_stack = []
+            #for decode in decoded:
+            #    decode = decode.to('cpu', non_blocking=False)
+            #    decode = numpy_to_pil((decode / 2 + 0.5).permute(1, 2, 0).numpy())[0]
+            #    for_stack.append(decode)
+            #self.stack.append(np.hstack(for_stack))
+            print(latents.shape)
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
+            return kwargs
 
         def threaded_model(prompts, negative_prompts, steps, callback):
             self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                  num_inference_steps=steps, callback=callback,
+                                  num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"],
                                   callback_steps=1)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
 
-        for i in range(0, len(prompts), self.max_latent):
+        for im in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
-            current_prompts = prompts[i:i + self.max_latent]
+            current_prompts = prompts[im:im + self.max_latent]
             model_thread = threading.Thread(target=threaded_model,
-                                            args=[[x.prompt for x in prompts[i:i + self.max_latent]],
-                                                  [x.negative_prompt for x in prompts[i:i + self.max_latent]],
+                                            args=[[x.prompt for x in prompts[im:im + self.max_latent]],
+                                                  [x.negative_prompt for x in prompts[im:im + self.max_latent]],
                                                   self.steps, intermediate_callback])
             model_thread.start()
             self.intermediates = None
@@ -68,7 +83,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                                                  prompt=current_prompts[idx])
                     yield RunStatus(current=self.step,
                                     total=self.steps,
-                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
+                                    interactions=[x.interaction for x in prompts[im:im + self.max_latent]])
                     self.intermediate_update = False
                 time.sleep(0.01)
             outputs = []
@@ -76,6 +91,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type,
                                     prompt=current_prompts[idx]))
             yield FinalOutput(outputs=outputs)
+            #Image.fromarray(np.vstack(self.stack)).show()
             self.intermediates = None
             self.step = 0
             gc.collect()

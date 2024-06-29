@@ -41,6 +41,8 @@ default_images = {
 }
 images = {}
 
+def edit_any_message(message, content, files):
+
 class UpscaleAndAgainAndEdit(discord.ui.View):
     def __init__(self, *, timeout=None, prompt):
         super().__init__(timeout=timeout)
@@ -126,7 +128,8 @@ async def async_model_runner():
                         images[output.prompt.interaction][output.prompt.index] = output
                     for interaction in list(set([x.prompt.interaction for x in i.outputs])):
                         print(interaction)
-                        if not finalized[interaction]:
+                        #if not finalized[interaction]:
+                        if True:
                             print("unfinalized")
                             sendable_images = [None] * this_request.amount
                             for_decoding = []
@@ -143,7 +146,7 @@ async def async_model_runner():
                             if for_decoding != None:
                                 for image in for_decoding:
                                     tmp_image = now[0].model.mini_vae.decode(image.output).sample
-                                    tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                    tmp_image = tmp_image.to('cpu', non_blocking=False)
                                     tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                     imagebn = io.BytesIO()
                                     # tmp_image.show(
@@ -166,6 +169,7 @@ async def async_model_runner():
                             asyncio.run_coroutine_threadsafe(
                                 coro=interaction.edit_original_message(content=send_message,
                                                                                 files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
+                    del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
                 if isinstance(i, RunStatus):
@@ -190,11 +194,11 @@ async def async_model_runner():
                                             sendable_images[image.prompt.index] = imagebn
                                         else:
                                             for_decoding.append(image)
-                                            print(image.output.shape)
                                 if for_decoding != None:
                                     for image in for_decoding:
+                                        print(image.prompt.index)
                                         tmp_image = now[0].model.mini_vae.decode(image.output).sample
-                                        tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                        tmp_image = tmp_image.to('cpu', non_blocking=False)
                                         tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                         imagebn = io.BytesIO()
                                         #tmp_image.show(
@@ -222,6 +226,7 @@ async def async_model_runner():
                                                                            files=[discord.File(fp=x, filename=str(idx) + ".jpg")
                                                                                   for idx, x in enumerate(sendable_images)]),
                                     loop=client.loop)
+                    del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
             print(run_queue)
