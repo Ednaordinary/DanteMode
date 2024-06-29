@@ -42,8 +42,13 @@ class GenericModel:
         self.steps = steps
 
     def to(self, device):
-        if not self.model:
+        try:
+            self.model
+        except:
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
+        else:
+            if not self.model:
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
 

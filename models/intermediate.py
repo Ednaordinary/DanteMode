@@ -22,8 +22,8 @@ class IntermediateOptimizedModel(OptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
-        self.mini_vae.enable_slicing()
-        self.mini_vae.enable_tiling()
+        #self.mini_vae.enable_slicing() # bugged? or something
+        #self.mini_vae.enable_tiling()
 
     def del_model(self):
         del self.model
@@ -32,6 +32,7 @@ class IntermediateOptimizedModel(OptimizedModel):
         del self.helper
         gc.collect()
         torch.cuda.empty_cache()
+        self.model = None
 
     async def call(self, prompts):
         self.to("cuda")
@@ -39,9 +40,6 @@ class IntermediateOptimizedModel(OptimizedModel):
         self.helper.enable()
 
         def intermediate_callback(i, t, latents):
-            #latents = kwargs["latents"]
-            #print(latents)
-            #sample = self.mini_vae.decode(latents).sample
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
@@ -53,6 +51,7 @@ class IntermediateOptimizedModel(OptimizedModel):
 
         for i in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
+            current_prompts = prompts[i:i + self.max_latent]
             model_thread = threading.Thread(target=threaded_model,
                                             args=[[x.prompt for x in prompts[i:i + self.max_latent]],
                                                   [x.negative_prompt for x in prompts[i:i + self.max_latent]],
@@ -64,7 +63,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
-                                                 prompt=prompts[i:i + self.max_latent][idx])
+                                                 prompt=current_prompts[idx])
                     yield RunStatus(current=self.step,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
@@ -73,7 +72,7 @@ class IntermediateOptimizedModel(OptimizedModel):
             outputs = []
             for idx, out in enumerate(self.out[0]):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type,
-                                    prompt=prompts[i:i + self.max_latent][idx]))
+                                    prompt=current_prompts[idx]))
             yield FinalOutput(outputs=outputs)
             self.intermediates = None
             self.step = 0

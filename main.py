@@ -26,9 +26,9 @@ run_queue = None
 current_model_path = None
 model_translations = {
     # (self, path, out_type, max_latent, steps, mini_vae)
-    #"sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
-    #                                 mini_vae="madebyollin/taesd"),
-    "sd": GenericModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25),
+    "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25,
+                                     mini_vae="madebyollin/taesd"),
+    #"sd": GenericModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=20, steps=25),
     #"sdxl": GenericModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25)
     #"sdxl": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=20, steps=25,
     #                                 mini_vae="madebyollin/taesdxl"),
@@ -145,7 +145,6 @@ async def async_model_runner():
                                         tmp_image = now[0].model.mini_vae(image.output).sample
                                         tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0].resize(
                                                                                  (128, 128))
-                                        images[image.prompt.interaction][image.prompt.index].output = tmp_image
                                         imagebn = io.BytesIO()
                                         tmp_image.save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
@@ -168,6 +167,7 @@ async def async_model_runner():
                     images[i.prompt.interaction][i.prompt.index] = i
                 if isinstance(i, RunStatus):
                     if limiter + 1.0 < time.time():
+                        limiter = time.time()
                         for interaction in list(set(i.interactions)):
                             print(interaction)
                             if not finalized[interaction]:
@@ -229,7 +229,6 @@ async def async_model_runner():
                                 if output_count == len(images[interaction]):
                                     finalized[interaction] = True
                                     print("setting finalized")
-                                prompt = images[interaction][0].prompt
                                 current = 0
                                 for x in i.interactions:
                                     if x == interaction:
@@ -434,16 +433,20 @@ async def generate(
             description="How many images to generate (more will take longer)"
         ),
 ):
-    global default_images
-    global prompt_queue
-    if not model: model = "sd"
-    if not images: images = default_images[model]
-    if not negative_prompt: negative_prompt = ""
-    await interaction.response.send_message("Generation has been queued.")
-    print("adding generation")
-    # (self, model, prompt, negative_prompt, amount, interaction)
-    prompt_queue.append(FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt, amount=images,
-                                       interaction=interaction))
+    if interaction.user.id == 381983555930292224:
+        global default_images
+        global prompt_queue
+        if not model: model = "sd"
+        if not images: images = default_images[model]
+        if not negative_prompt: negative_prompt = ""
+        await interaction.response.send_message("Generation has been queued.")
+        print("adding generation")
+        # (self, model, prompt, negative_prompt, amount, interaction)
+        prompt_queue.append(FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt, amount=images,
+                                           interaction=interaction))
+    else:
+        await interaction.response.send_message("Dante is currently in a development state for Dante4. Please come back later")
+        await interaction.channel.send("<@381983555930292224> PUT ME DOWN NOW :rage: :rage: :face_with_symbols_over_mouth: :face_with_symbols_over_mouth: ")
 
 
 threading.Thread(target=model_factory, daemon=True).start()
