@@ -187,6 +187,7 @@ async def async_model_runner():
                                             sendable_images[image.prompt.index] = imagebn
                                         else:
                                             for_decoding.append(image)
+                                            print(image.output.shape)
                                             # print(image.output.unsqueeze(0).shape)
                                             # tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
                                             # tmp_image = tmp_image.to('cpu', non_blocking=True)
@@ -198,21 +199,28 @@ async def async_model_runner():
                                             # imagebn.seek(0)
                                             # sendable_images.append(imagebn)
                                 if for_decoding != None:
-                                    print("for_decode len:", len(for_decoding))
-                                    print([x.output.unsqueeze(0).shape for x in for_decoding])
-                                    print(len([x.output.unsqueeze(0) for x in for_decoding]))
-                                    print(torch.cat([x.output.unsqueeze(0) for x in for_decoding], dim=0).shape)
-                                    tmp_image = now[0].model.mini_vae.decode(torch.cat([x.output.unsqueeze(0) for x in for_decoding], dim=0)).sample
-                                    tmp_image = tmp_image.to('cpu', non_blocking=True)
-                                    print("for_decode len:", len(for_decoding))
-                                    print(tmp_image.shape)
-                                    for idx, image in enumerate(tmp_image):
-                                        print(idx)
-                                        image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
+                                    #.unsqueeze(0)
+                                    #decoding_now = torch.cat([x.output.unsqueeze(0) for x in for_decoding], dim=0)
+                                    #print(decoding_now.shape)
+                                    #tmp_image = now[0].model.mini_vae.decode(decoding_now).sample
+                                    #tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                    #print("for_decode len:", len(for_decoding))
+                                    #print(tmp_image.shape)
+                                    #for idx, image in enumerate(tmp_image):
+                                    #    print(idx)
+                                    #    image = numpy_to_pil((image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
+                                    #    imagebn = io.BytesIO()
+                                    #    image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
+                                    #    imagebn.seek(0)
+                                    #    sendable_images[for_decoding[idx].prompt.index] = imagebn
+                                    for image in for_decoding:
+                                        tmp_image = now[0].model.mini_vae.decode(image.output).sample
+                                        tmp_image = tmp_image.to('cpu', non_blocking=True)
+                                        tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                         imagebn = io.BytesIO()
-                                        image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
+                                        tmp_image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
-                                        sendable_images[for_decoding[idx].prompt.index] = imagebn
+                                        sendable_images[image.prompt.index] = imagebn
                                 sendable_images = [x for x in sendable_images if x != None]
                                 output_count = 0
                                 for image in images[interaction]:

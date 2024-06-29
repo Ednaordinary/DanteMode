@@ -20,5 +20,5 @@ class SDXLModel(IntermediateOptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
-        self.mini_vae.enable_slicing()
+        #self.mini_vae.enable_slicing()
         #self.mini_vae.enable_tiling()
