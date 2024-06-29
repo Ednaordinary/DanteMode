@@ -15,6 +15,7 @@ class IntermediateOptimizedModel(OptimizedModel):
     def __init__(self, path, out_type, max_latent, steps, mini_vae):
         super().__init__(path, out_type, max_latent, steps)
         self.mini_vae = mini_vae
+        self.mini_vae_path = mini_vae
 
     def to(self, device):
         super().to(device)
@@ -33,6 +34,7 @@ class IntermediateOptimizedModel(OptimizedModel):
         gc.collect()
         torch.cuda.empty_cache()
         self.model = None
+        self.mini_vae = self.mini_vae_path
 
     async def call(self, prompts):
         self.to("cuda")
