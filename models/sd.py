@@ -129,7 +129,7 @@ class SD3Model(IntermediateModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=intermediate_callback,
+                                      num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=["latents"],
                                       max_sequence_length=512)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except Exception as e:
@@ -195,7 +195,7 @@ class SCASCModel(GenericModel):
             self.intermediate_update = True
             return kwargs
 
-        def threaded_model(prompts, negative_prompts, steps, callback):
+        def threaded_model(prompts, negative_prompts):
             try:
                 #self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
                 #                      num_inference_steps=steps, callback_on_step_end=callback)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
@@ -217,8 +217,7 @@ class SCASCModel(GenericModel):
             current_prompts = prompts[im:im + self.max_latent]
             model_thread = threading.Thread(target=threaded_model,
                                             args=[[x.prompt for x in prompts[im:im + self.max_latent]],
-                                                  [x.negative_prompt for x in prompts[im:im + self.max_latent]],
-                                                  self.steps, intermediate_callback])
+                                                  [x.negative_prompt for x in prompts[im:im + self.max_latent]]])
             model_thread.start()
             self.intermediate_update = False
             self.prior_step = 0

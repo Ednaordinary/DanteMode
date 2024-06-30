@@ -18,6 +18,8 @@ import gc
 import io
 import os
 
+from models.upscale import LDMUpscaleModel
+
 torch.backends.cuda.matmul.allow_tf32 = True
 
 load_dotenv()
@@ -100,6 +102,18 @@ class AgainButton(discord.ui.View):
             FactoryRequest(model=self.request.model, prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
                            amount=self.request.amount,
                            interaction=message))
+        button.style = discord.ButtonStyle.secondary
+        await interaction.response.edit_message(view=self)
+    @discord.ui.button(label="Upscale", style=discord.ButtonStyle.primary)
+    async def upscale_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        message = await interaction.channel.send("Generation has been queued.", view=self)
+        global prompt_queue
+        requests = []
+        for attachment in message.attachments:
+            prompt_queue.append(
+                FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages"), prompt=self.request.prompt, negative_prompt="",
+                               amount=1,
+                               interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
 
