@@ -26,10 +26,9 @@ class LDMUpscaleModel(GenericModel):
     async def call(self, prompts):
         self.to("cuda")
         for i in range(0, len(prompts), self.max_latent):
-            step = 0
             self.step = 0
             try:
-                self.out = [self.model(prompt, num_inference_steps=self.steps, output_type="pil").images for prompt in prompts]
+                self.out = [self.model(prompt.prompt, num_inference_steps=self.steps, output_type="pil").images[0] for prompt in prompts[i:i + self.max_latent]]
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -40,6 +39,8 @@ class LDMUpscaleModel(GenericModel):
             outputs = []
             print(self.out)
             for idx, out in enumerate(self.out):
+                print(idx)
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
+            print("yielding final output")
             yield FinalOutput(outputs=outputs)

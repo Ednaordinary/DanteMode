@@ -121,17 +121,14 @@ class AgainAndUpscaleButton(discord.ui.View):
     async def upscale_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         message = await interaction.channel.send("Upscale has been queued.")
         global prompt_queue
-        requests = []
+        images = []
         for attachment in interaction.message.attachments:
             image = await attachment.read()
             #image.seek(0)
-            image = Image.open(io.BytesIO(image)).convert("RGB")
-            requests.append(FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1, steps=50), prompt=image, negative_prompt="",
-                               amount=1,
-                               interaction=message))
-        for request in requests:
-            prompt_queue.append(request)
-        print(requests, prompt_queue)
+            images.append(Image.open(io.BytesIO(image)).convert("RGB").resize(512, 512))
+        prompt_queue.append(FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1, steps=40), prompt=images, negative_prompt="",
+                           amount=len(interaction.message.attachments),
+                           interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
 
@@ -194,9 +191,14 @@ async def async_model_runner():
         start_time = time.time()
         prompts = []
         for request in now:
-            for i in range(request.amount):
-                prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt,
-                                      interaction=request.interaction, index=i, parent_amount=request.amount))
+            if isinstance(now[0].model, LDMUpscaleModel):
+                for idx, i in enumerate(request.prompt):
+                    prompts.append(Prompt(prompt=i, negative_prompt=request.negative_prompt,
+                                          interaction=request.interaction, index=idx, parent_amount=request.amount))
+            else:
+                for i in range(request.amount):
+                    prompts.append(Prompt(prompt=request.prompt, negative_prompt=request.negative_prompt,
+                                          interaction=request.interaction, index=i, parent_amount=request.amount))
             images[request.interaction] = [None] * request.amount
             finalized[request.interaction] = False
             #asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
@@ -263,12 +265,14 @@ async def async_model_runner():
                                         prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                             else:
                                 send_message = None
-                            #asyncio.run_coroutine_threadsafe(
-                            #    coro=interaction.edit_original_message(content=send_message,
-                            #                                                    files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
-                            asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
-                                discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
-                                enumerate(sendable_images)], "AgainAndUpscale", this_request), loop=client.loop)
+                            if isinstance(now[0].model, LDMUpscaleModel):
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(sendable_images)) + " images upscaled in " + str(round(time.time() - start_time, 2)) + "s", [
+                                    discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
+                                    enumerate(sendable_images)], None, None), loop=client.loop)
+                            else:
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
+                                    discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
+                                    enumerate(sendable_images)], "AgainAndUpscale", this_request), loop=client.loop)
                             del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
