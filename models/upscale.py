@@ -1,3 +1,5 @@
+import os
+import sys
 import threading
 import time
 
@@ -24,17 +26,20 @@ class LDMUpscaleModel(GenericModel):
     async def call(self, prompts):
         self.to("cuda")
         for i in range(0, len(prompts), self.max_latent):
-            model_thread = threading.Thread(target=threaded_model,
-                                            args=[self, self.model, [x.prompt for x in prompts[i:i + self.max_latent]]])
-            model_thread.start()
             step = 0
             self.step = 0
             try:
-                self.out = self.model(prompts, num_inference_steps=self.steps)
-            except:
+                self.out = [self.model(prompt, num_inference_steps=self.steps, output_type="pil").images for prompt in prompts]
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
+                print(repr(e))
                 self.out = [[]]
+                pass
             outputs = []
-            for idx, out in enumerate(self.out[0]):
+            print(self.out)
+            for idx, out in enumerate(self.out):
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)

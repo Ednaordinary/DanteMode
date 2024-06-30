@@ -46,6 +46,7 @@ class PASIModel(IntermediateModel):
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
+                pass
 
         for im in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)

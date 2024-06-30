@@ -70,6 +70,7 @@ class GenericModel:
                                  callback=callback, callback_steps=1)
             except:
                 self.out = [[]]
+                pass
 
         def progress_callback(i, t, latents):
             self.step = i

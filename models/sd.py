@@ -135,6 +135,7 @@ class SD3Model(IntermediateModel):
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
+                pass
 
         for im in range(0, len(prompts), self.max_latent):
             current_prompts = prompts[im:im + self.max_latent]
@@ -212,6 +213,7 @@ class SCASCModel(GenericModel):
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
+                pass
 
         for im in range(0, len(prompts), self.max_latent):
             current_prompts = prompts[im:im + self.max_latent]

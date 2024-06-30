@@ -56,6 +56,7 @@ class IntermediateModel(GenericModel):
                                           "latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except:
                 self.out = [[]]
+                pass
 
         for im in range(0, len(prompts), self.max_latent):
             current_prompts = prompts[im:im + self.max_latent]
@@ -142,6 +143,7 @@ class IntermediateOptimizedModel(OptimizedModel):
                                           "latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except:
                 self.out = [[]]
+                pass
 
         for im in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)

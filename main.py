@@ -1,5 +1,7 @@
 import sys
 
+from PIL import Image
+
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
@@ -65,29 +67,25 @@ default_images = {
 images = {}
 
 
-async def edit_any_message(message, content, files):
-    try:
-        if isinstance(message, discord.Interaction):
-            if content == None:
-                await message.edit_original_message(files=files)
-            elif files == None:
-                await message.edit_original_message(content=content)
+async def edit_any_message(message, content, files, view, request):
+    if view == "AgainAndUpscale":
+        view = AgainAndUpscaleButton(request=request)
+    for i in range(3): # Sometimes we'll get mac address errors due to load balancing
+        try:
+            params = {"content": content, "files": files, "view": view}
+            params = {k:v for k,v in params.items() if v is not None}
+            if isinstance(message, discord.Interaction):
+                await message.edit_original_message(**params)
             else:
-                await message.edit_original_message(content=content, files=files)
+                await message.edit(**params)
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            print(exc_type, fname, exc_tb.tb_lineno)
+            print(repr(e))
+            pass
         else:
-            if content == None:
-                await message.edit(files=files)
-            elif files == None:
-                await message.edit(content)
-            else:
-                await message.edit(content, files=files)
-    except Exception as e:
-        exc_type, exc_obj, exc_tb = sys.exc_info()
-        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        print(exc_type, fname, exc_tb.tb_lineno)
-        print(repr(e))
-        pass
-
+            return
 
 class AgainButton(discord.ui.View):
     def __init__(self, *, timeout=None, request):
@@ -104,16 +102,36 @@ class AgainButton(discord.ui.View):
                            interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
-    @discord.ui.button(label="Upscale", style=discord.ButtonStyle.primary)
-    async def upscale_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+class AgainAndUpscaleButton(discord.ui.View):
+    def __init__(self, *, timeout=None, request):
+        super().__init__(timeout=timeout)
+        self.request = request
+
+    @discord.ui.button(label="Again", style=discord.ButtonStyle.primary)
+    async def again_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         message = await interaction.channel.send("Generation has been queued.", view=self)
         global prompt_queue
+        prompt_queue.append(
+            FactoryRequest(model=self.request.model, prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
+                           amount=self.request.amount,
+                           interaction=message))
+        button.style = discord.ButtonStyle.secondary
+        await interaction.response.edit_message(view=self)
+    @discord.ui.button(label="Upscale", style=discord.ButtonStyle.primary)
+    async def upscale_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        message = await interaction.channel.send("Upscale has been queued.")
+        global prompt_queue
         requests = []
-        for attachment in message.attachments:
-            prompt_queue.append(
-                FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages"), prompt=self.request.prompt, negative_prompt="",
+        for attachment in interaction.message.attachments:
+            image = await attachment.read()
+            #image.seek(0)
+            image = Image.open(io.BytesIO(image)).convert("RGB")
+            requests.append(FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1, steps=50), prompt=image, negative_prompt="",
                                amount=1,
                                interaction=message))
+        for request in requests:
+            prompt_queue.append(request)
+        print(requests, prompt_queue)
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
 
@@ -150,7 +168,7 @@ def model_factory():
                 #asyncio.run_coroutine_threadsafe(
                 #    coro=prompt.interaction.edit_original_message(content="Model loaded to " + device), loop=client.loop)
                 asyncio.run_coroutine_threadsafe(
-                    coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None), loop=client.loop
+                    coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None), loop=client.loop
                 )
                 pop_amt += 1
             for i in range(pop_amt): prompt_queue.pop(0)
@@ -182,7 +200,7 @@ async def async_model_runner():
             images[request.interaction] = [None] * request.amount
             finalized[request.interaction] = False
             #asyncio.run_coroutine_threadsafe(coro=request.interaction.edit_original_message(content="Model loaded to gpu"), loop=client.loop)
-            asyncio.run_coroutine_threadsafe(coro=edit_any_message(request.interaction, "Model loaded to gpu", None),
+            asyncio.run_coroutine_threadsafe(coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
                                              loop=client.loop)
         limiter = time.time()
         with torch.no_grad():
@@ -250,7 +268,7 @@ async def async_model_runner():
                             #                                                    files=[discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in enumerate(sendable_images)]), loop=client.loop)
                             asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
                                 discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
-                                enumerate(sendable_images)]), loop=client.loop)
+                                enumerate(sendable_images)], "AgainAndUpscale", this_request), loop=client.loop)
                             del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
@@ -316,7 +334,7 @@ async def async_model_runner():
                                 #    loop=client.loop)
                                 asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
                                     discord.File(fp=x, filename=str(idx) + ".jpg")
-                                    for idx, x in enumerate(sendable_images)]), loop=client.loop)
+                                    for idx, x in enumerate(sendable_images)], None, None), loop=client.loop)
                                 del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
