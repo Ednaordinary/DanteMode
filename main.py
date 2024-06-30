@@ -95,9 +95,10 @@ class AgainButton(discord.ui.View):
     @discord.ui.button(label="Again", style=discord.ButtonStyle.primary)
     async def again_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         message = await interaction.channel.send("Generation has been queued.", view=self)
+        global prompt_queue
         prompt_queue.append(
-            FactoryRequest(model=model_translations[self.request.model.path], prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
-                           amount=self.request.images,
+            FactoryRequest(model=self.request.model, prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
+                           amount=self.request.amount,
                            interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
