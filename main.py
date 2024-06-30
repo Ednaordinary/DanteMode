@@ -3,7 +3,7 @@ import sys
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
-from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel
+from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
 from dotenv import load_dotenv
@@ -30,26 +30,32 @@ current_model_path = None
 model_translations = {
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=50, steps=30,
                                      mini_vae="madebyollin/taesd"),
-    "sd2": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-2-1", out_type="image", max_latent=30, steps=30,
-                                     mini_vae="madebyollin/taesd"),
+    "sd2": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-2-1", out_type="image", max_latent=30,
+                                      steps=30,
+                                      mini_vae="madebyollin/taesd"),
     "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=15, steps=35,
                       mini_vae="madebyollin/taesdxl"),
-    "sdxl-ds": SDXLModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
-                      mini_vae="madebyollin/taesdxl"),
-    "sdxl-jx": SDXLModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
-                         mini_vae="madebyollin/taesdxl"),
+    "sdxl-ds": SDXLDSModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
+                           mini_vae="madebyollin/taesdxl"),
+    "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
+                           mini_vae="madebyollin/taesdxl"),
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
+    "sd-ds": SDDSModel(path="Lykon/dreamshaper-8", out_type="image", max_latent=50, steps=30,
+                       mini_vae="madebyollin/taesd"),
     "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
                       mini_vae="madebyollin/taesd3"),
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
-                          mini_vae="madebyollin/taesdxl"),
+                       mini_vae="madebyollin/taesdxl"),
 }
 default_images = {
     "sd": 10,
     "sd2": 10,
     "sdxl": 10,
+    "sdxl-ds": 10,
+    "sdxl-jx": 10,
     "sdxl-t": 10,
+    "sd-ds": 10,
     "sd3-m": 5,
     "scasc": 10,
     "pa-si": 10,
@@ -81,16 +87,20 @@ async def edit_any_message(message, content, files):
         pass
 
 
-class UpscaleAndAgainAndEdit(discord.ui.View):
-    def __init__(self, *, timeout=None, prompt):
+class AgainButton(discord.ui.View):
+    def __init__(self, *, timeout=None, request):
         super().__init__(timeout=timeout)
-        self.prompt = prompt
+        self.request = request
 
     @discord.ui.button(label="Again", style=discord.ButtonStyle.primary)
     async def again_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        prompt_queue.append()
+        message = await interaction.channel.send("Generation has been queued.", view=self)
+        prompt_queue.append(
+            FactoryRequest(model=model_translations[self.request.model.path], prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
+                           amount=self.request.images,
+                           interaction=message))
         button.style = discord.ButtonStyle.secondary
-
+        await interaction.response.edit_message(view=self)
 
 class FactoryRequest:
     def __init__(self, model, prompt, negative_prompt, amount, interaction):
@@ -185,9 +195,6 @@ async def async_model_runner():
                                         for_decoding.append(image)
                             if for_decoding != None:
                                 for image in for_decoding:
-                                    print(image.index)
-                                    image.output = torch.nn.functional.interpolate(image.output, size=(64, 64), mode='bicubic',
-                                                                    align_corners=False)
                                     tmp_image = now[0].model.mini_vae.decode(image.output).sample
                                     tmp_image = tmp_image.to('cpu', non_blocking=False)
                                     gc.collect()
@@ -215,7 +222,8 @@ async def async_model_runner():
                             if finalized[interaction]:
                                 if prompt.negative_prompt != "":
                                     send_message = str(len(sendable_images)) + " images of '" + str(
-                                        prompt.prompt) + "' (negative: '" + str(prompt.negative_prompt) + "') in " + str(
+                                        prompt.prompt) + "' (negative: '" + str(
+                                        prompt.negative_prompt) + "') in " + str(
                                         round(time.time() - start_time, 2)) + "s"
                                 else:
                                     send_message = str(len(sendable_images)) + " images of '" + str(
@@ -253,6 +261,7 @@ async def async_model_runner():
                                             for_decoding.append(image)
                                 if for_decoding != None:
                                     for image in for_decoding:
+                                        print(image.output.shape)
                                         tmp_image = now[0].model.mini_vae.decode(image.output).sample
                                         tmp_image = tmp_image.to('cpu', non_blocking=False)
                                         gc.collect()
@@ -261,7 +270,7 @@ async def async_model_runner():
                                         imagebn = io.BytesIO()
                                         #tmp_image.show(
                                         #    title=image.prompt.prompt + str(image.prompt.index))  # for debugging indexing
-                                        tmp_image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
+                                        tmp_image.resize((256, 256)).save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
                                         if images[interaction][image.prompt.index] == image:
                                             images[interaction][image.prompt.index].output = tmp_image
@@ -355,17 +364,19 @@ async def generate(
         if not images: images = default_images[model]
         if not images_multiplier: images_multiplier = 1
         if not negative_prompt: negative_prompt = ""
-        await interaction.response.send_message("Generation has been queued.")
-        prompt_queue.append(
-            FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+        request = FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
                            amount=images,
-                           interaction=interaction))
+                           interaction=interaction)
+        prompt_queue.append(request)
+        await interaction.response.send_message("Generation has been queued.", view=AgainButton(request=request))
         #dont batch because model will be loaded to gpu anyways
         for idx in range(images_multiplier):
             if idx == 0: continue
-            prompt_queue.append(FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
-                           amount=images,
-                           interaction=(await interaction.channel.send("Generation has been queued."))))
+            prompt_queue.append(
+                FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+                               amount=images,
+                               interaction=(await interaction.channel.send("Generation has been queued.", view=AgainButton(request=request)))))
+                # request can be reused since the button is request independent
     else:
         await interaction.response.send_message(
             "Dante is currently in a development state for Dante4. Please come back later")

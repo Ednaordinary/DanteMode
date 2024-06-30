@@ -8,6 +8,7 @@ from .generic import RunStatus, FinalOutput, GenericOutput
 from .intermediate import IntermediateModel, IntermediateOutput
 import torch
 
+
 class PASIModel(IntermediateModel):
     def to(self, device):
         if not self.model:
@@ -17,7 +18,8 @@ class PASIModel(IntermediateModel):
                 torch_dtype=torch.float16,
                 use_safetensors=True,
             )
-            self.model = PixArtSigmaPipeline.from_pretrained(self.path, torch_dtype=torch.float16, transformer=self.transformer, use_safetensors=True)
+            self.model = PixArtSigmaPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                             transformer=self.transformer, use_safetensors=True)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
         if isinstance(self.mini_vae, str):
@@ -27,6 +29,7 @@ class PASIModel(IntermediateModel):
 
     async def call(self, prompts):
         self.to("cuda")
+
         #self.stack = []
 
         def intermediate_callback(i, t, latents):
@@ -38,10 +41,12 @@ class PASIModel(IntermediateModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback=intermediate_callback, callback_steps=1, height=4096, width=4096)
+                                      num_inference_steps=steps, callback=intermediate_callback, callback_steps=1,
+                                      height=4096, width=4096)
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
+
         for im in range(0, len(prompts), self.max_latent):
             #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
             current_prompts = prompts[im:im + self.max_latent]
@@ -65,7 +70,7 @@ class PASIModel(IntermediateModel):
             outputs = []
             for idx, out in enumerate(self.out[0]):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type,
-                                    prompt=current_prompts[idx]))
+                                             prompt=current_prompts[idx]))
             yield FinalOutput(outputs=outputs)
             self.intermediates = None
             self.step = 0

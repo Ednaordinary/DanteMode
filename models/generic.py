@@ -22,16 +22,19 @@ class Prompt:
 
 
 class GenericOutput:
-    def __init__(self, output, out_type, prompt): #, interaction, index):
+    def __init__(self, output, out_type, prompt):  #, interaction, index):
         self.output = output
         self.out_type = out_type,
         self.prompt = prompt
+
+
 #        self.interaction = interaction
 #        self.index = index
 
 class FinalOutput:
     def __init__(self, outputs):
         self.outputs = outputs
+
 
 class GenericModel:
     def __init__(self, path, out_type, max_latent, steps):
@@ -48,7 +51,8 @@ class GenericModel:
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
         else:
             if not self.model:
-                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                               safety_checker=None)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
 
@@ -62,9 +66,11 @@ class GenericModel:
 
         def threaded_model(model, prompts, negative_prompts, steps, callback):
             try:
-                self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback, callback_steps=1)
+                self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
+                                 callback=callback, callback_steps=1)
             except:
                 self.out = [[]]
+
         def progress_callback(i, t, latents):
             self.step = i
 
@@ -85,5 +91,6 @@ class GenericModel:
                 time.sleep(0.01)
             outputs = []
             for idx, out in enumerate(self.out[0]):
-                outputs.append(GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
+                outputs.append(
+                    GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
