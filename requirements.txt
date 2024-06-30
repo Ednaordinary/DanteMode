@@ -13,3 +13,4 @@ sentencepiece
 protobuf
 beautifulsoup4
 ftfy
+opencv-python

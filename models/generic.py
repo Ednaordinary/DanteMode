@@ -77,7 +77,7 @@ class GenericModel:
 
         for i in range(0, len(prompts), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,
-                                            args=[self, self.model, [x.prompt for x in prompts[i:i + self.max_latent]],
+                                            args=[self.model, [x.prompt for x in prompts[i:i + self.max_latent]],
                                                   [x.negative_prompt for x in prompts[i:i + self.max_latent]],
                                                   self.steps, progress_callback])
             model_thread.start()
