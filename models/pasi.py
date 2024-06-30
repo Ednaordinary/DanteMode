@@ -1,6 +1,11 @@
+import gc
+import threading
+import time
+
 from diffusers import PixArtSigmaPipeline, Transformer2DModel, AutoencoderTiny
 
-from .intermediate import IntermediateModel
+from .generic import RunStatus, FinalOutput, GenericOutput
+from .intermediate import IntermediateModel, IntermediateOutput
 import torch
 
 class PASIModel(IntermediateModel):
@@ -18,29 +23,27 @@ class PASIModel(IntermediateModel):
         if isinstance(self.mini_vae, str):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
-            self.mini_vae.config.shift_factor=0.0
         self.mini_vae.to(device)
 
     async def call(self, prompts):
         self.to("cuda")
+        #self.stack = []
 
-        def intermediate_callback(pipe, i, t, kwargs):
-            latents = kwargs["latents"]
-            print(latents.shape)
+        def intermediate_callback(i, t, latents):
+            #pixart sigma doesnt support callback on step end
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
-            return kwargs
 
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"],
-                                      max_sequence_length=512)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+                                      num_inference_steps=steps, callback=intermediate_callback, callback_steps=1, height=4096, width=4096)
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
         for im in range(0, len(prompts), self.max_latent):
+            #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
             current_prompts = prompts[im:im + self.max_latent]
             model_thread = threading.Thread(target=threaded_model,
                                             args=[[x.prompt for x in prompts[im:im + self.max_latent]],

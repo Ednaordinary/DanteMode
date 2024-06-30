@@ -11,3 +11,5 @@ numpy
 pillow
 sentencepiece
 protobuf
+beautifulsoup4
+ftfy

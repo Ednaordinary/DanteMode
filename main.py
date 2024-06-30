@@ -2,6 +2,7 @@ import sys
 
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
+from models.pasi import PASIModel
 from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
@@ -41,6 +42,8 @@ model_translations = {
     "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
                       mini_vae="madebyollin/taesd3"),
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
+    "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
+                          mini_vae="madebyollin/taesdxl"),
 }
 default_images = {
     "sd": 10,
@@ -49,6 +52,7 @@ default_images = {
     "sdxl-t": 10,
     "sd3-m": 5,
     "scasc": 10,
+    "pa-si": 10,
 }
 images = {}
 
@@ -181,6 +185,9 @@ async def async_model_runner():
                                         for_decoding.append(image)
                             if for_decoding != None:
                                 for image in for_decoding:
+                                    print(image.index)
+                                    image.output = torch.nn.functional.interpolate(image.output, size=(64, 64), mode='bicubic',
+                                                                    align_corners=False)
                                     tmp_image = now[0].model.mini_vae.decode(image.output).sample
                                     tmp_image = tmp_image.to('cpu', non_blocking=False)
                                     gc.collect()

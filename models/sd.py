@@ -71,7 +71,7 @@ class SD3Model(IntermediateModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"],
+                                      num_inference_steps=steps, callback_on_step_end=intermediate_callback, callback_on_step_end_tensor_inputs=["latents"],
                                       max_sequence_length=512)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except Exception as e:
                 print(repr(e))
