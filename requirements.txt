@@ -7,3 +7,5 @@ python-dotenv
 xformers
 deepcache
 torch
+numpy
+pillow
