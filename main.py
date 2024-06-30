@@ -2,7 +2,7 @@ import sys
 
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
-from models.sd import SDXLModel, SDXLTModel, SD3Model
+from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
 from dotenv import load_dotenv
@@ -33,9 +33,14 @@ model_translations = {
                                      mini_vae="madebyollin/taesd"),
     "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=15, steps=35,
                       mini_vae="madebyollin/taesdxl"),
+    "sdxl-ds": SDXLModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
+                      mini_vae="madebyollin/taesdxl"),
+    "sdxl-jx": SDXLModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
+                         mini_vae="madebyollin/taesdxl"),
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
     "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
                       mini_vae="madebyollin/taesd3"),
+    "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
 }
 default_images = {
     "sd": 10,
@@ -43,6 +48,7 @@ default_images = {
     "sdxl": 10,
     "sdxl-t": 10,
     "sd3-m": 5,
+    "scasc": 10,
 }
 images = {}
 
@@ -100,8 +106,6 @@ def model_factory():
             if prompt_queue[0].model.path == run_queue[0].model.path:
                 run_queue.append(prompt_queue[0])
                 prompt_queue.pop(0)
-        if prompt_queue != []:
-            print(prompt_queue)
         if prompt_queue != [] and run_queue == None:  # has to be reevaluated
             device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
@@ -158,10 +162,8 @@ async def async_model_runner():
                     for output in i.outputs:
                         images[output.prompt.interaction][output.prompt.index] = output
                     for interaction in list(set([x.prompt.interaction for x in i.outputs])):
-                        print(interaction)
                         #if not finalized[interaction]:
                         if True:
-                            print("unfinalized")
                             for prompt in now:
                                 if prompt.interaction == interaction:
                                     this_request = prompt
@@ -177,7 +179,6 @@ async def async_model_runner():
                                         sendable_images[image.prompt.index] = imagebn
                                     else:
                                         for_decoding.append(image)
-                                        print(image.output.shape)
                             if for_decoding != None:
                                 for image in for_decoding:
                                     tmp_image = now[0].model.mini_vae.decode(image.output).sample
@@ -227,9 +228,7 @@ async def async_model_runner():
                     if limiter + 2.0 < time.time():
                         limiter = time.time()
                         for interaction in list(set(i.interactions)):
-                            print(interaction)
                             if not finalized[interaction]:
-                                print("unfinalized")
                                 for prompt in now:
                                     if prompt.interaction == interaction:
                                         this_request = prompt
@@ -247,7 +246,6 @@ async def async_model_runner():
                                             for_decoding.append(image)
                                 if for_decoding != None:
                                     for image in for_decoding:
-                                        print(image.prompt.index)
                                         tmp_image = now[0].model.mini_vae.decode(image.output).sample
                                         tmp_image = tmp_image.to('cpu', non_blocking=False)
                                         gc.collect()
@@ -271,7 +269,6 @@ async def async_model_runner():
                                         output_count += 1
                                 if output_count == len(images[interaction]):
                                     finalized[interaction] = True
-                                    print("setting finalized")
                                 current = 0
                                 for x in i.interactions:
                                     if x == interaction:
@@ -292,7 +289,6 @@ async def async_model_runner():
                                 del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
-            print(run_queue)
             run_queue[0].model = now[0].model
         else:
             now[0].model.del_model()
@@ -353,15 +349,16 @@ async def generate(
         if not images_multiplier: images_multiplier = 1
         if not negative_prompt: negative_prompt = ""
         await interaction.response.send_message("Generation has been queued.")
-        messages = [interaction]
-        for idx in range(images_multiplier):  # waiting for this to complete means we can batch prompts
+        prompt_queue.append(
+            FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+                           amount=images,
+                           interaction=interaction))
+        #dont batch because model will be loaded to gpu anyways
+        for idx in range(images_multiplier):
             if idx == 0: continue
-            messages.append(await interaction.channel.send("Generation has been queued."))
-        for message in messages:
-            prompt_queue.append(
-                FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
-                               amount=images,
-                               interaction=message))
+            prompt_queue.append(FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+                           amount=images,
+                           interaction=(await interaction.channel.send("Generation has been queued."))))
     else:
         await interaction.response.send_message(
             "Dante is currently in a development state for Dante4. Please come back later")

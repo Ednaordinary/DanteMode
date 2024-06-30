@@ -6,7 +6,7 @@ from DeepCache import DeepCacheSDHelper
 from .generic import GenericOutput, FinalOutput, RunStatus, GenericModel
 from .intermediate import IntermediateOptimizedModel, IntermediateModel, IntermediateOutput
 from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler, \
-    AutoPipelineForText2Image, StableDiffusion3Pipeline
+    AutoPipelineForText2Image, StableDiffusion3Pipeline, StableCascadeDecoderPipeline, StableCascadePriorPipeline
 import torch
 import gc
 
@@ -97,6 +97,70 @@ class SD3Model(IntermediateModel):
                 time.sleep(0.01)
             outputs = []
             for idx, out in enumerate(self.out[0]):
+                outputs.append(GenericOutput(output=out, out_type=self.out_type,
+                                    prompt=current_prompts[idx]))
+            yield FinalOutput(outputs=outputs)
+            self.intermediates = None
+            self.step = 0
+            gc.collect()
+            torch.cuda.empty_cache()
+
+class SCASCModel(GenericModel):
+    def to(self, device):
+        if not self.model:
+            self.prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16, safety_checker=None)
+            self.model = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.float16, safety_checker=None)
+        self.prior = self.prior.to(device)
+        self.model = self.model.to(device)
+
+    def del_model(self):
+        del self.prior
+        del self.model
+        gc.collect()
+        torch.cuda.empty_cache()
+    async def call(self, prompts):
+        self.to("cuda")
+
+        def intermediate_callback_prior(pipe, i, t, kwargs):
+            self.prior_step = i
+            self.intermediate_update = True
+            return kwargs
+        def intermediate_callback(pipe, i, t, kwargs):
+            self.step = i
+            self.intermediate_update = True
+            return kwargs
+
+        def threaded_model(prompts, negative_prompts, steps, callback):
+            try:
+                #self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
+                #                      num_inference_steps=steps, callback_on_step_end=callback)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+                self.prior.to("cuda")
+                self.out = self.prior(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts], guidance_scale=4.0, num_inference_steps=self.steps, height=1024, width=1024, callback_on_step_end=intermediate_callback_prior)
+                embeddings = self.out.image_embeddings.to(torch.float16)
+                self.prior.to("cpu") # Prior cant be on cuda during the decoding step, otherwise we run out of memory
+                self.out = self.model(image_embeddings=embeddings, prompt=prompts, negative_prompt=[x if x != None else "" for x in negative_prompts], guidance_scale=0.0, output_type="pil", num_inference_steps=self.steps, callback_on_step_end=intermediate_callback).images
+            except Exception as e:
+                print(repr(e))
+                self.out = [[]]
+        for im in range(0, len(prompts), self.max_latent):
+            current_prompts = prompts[im:im + self.max_latent]
+            model_thread = threading.Thread(target=threaded_model,
+                                            args=[[x.prompt for x in prompts[im:im + self.max_latent]],
+                                                  [x.negative_prompt for x in prompts[im:im + self.max_latent]],
+                                                  self.steps, intermediate_callback])
+            model_thread.start()
+            self.intermediate_update = False
+            self.prior_step = 0
+            self.step = 0
+            while model_thread.is_alive():
+                if self.intermediate_update:
+                    yield RunStatus(current=(self.step + self.prior_step)/2,
+                                    total=self.steps,
+                                    interactions=[x.interaction for x in prompts[im:im + self.max_latent]])
+                    self.intermediate_update = False
+                time.sleep(0.01)
+            outputs = []
+            for idx, out in enumerate(self.out):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type,
                                     prompt=current_prompts[idx]))
             yield FinalOutput(outputs=outputs)
