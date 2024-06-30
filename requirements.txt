@@ -9,3 +9,5 @@ deepcache
 torch
 numpy
 pillow
+sentencepiece
+protobuf

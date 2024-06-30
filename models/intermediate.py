@@ -50,8 +50,7 @@ class IntermediateModel(GenericModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"],
-                                      callback_steps=1)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except:
                 self.out = [[]]
         for im in range(0, len(prompts), self.max_latent):
@@ -133,8 +132,7 @@ class IntermediateOptimizedModel(OptimizedModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"],
-                                      callback_steps=1)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+                                      num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except:
                 self.out = [[]]
         for im in range(0, len(prompts), self.max_latent):

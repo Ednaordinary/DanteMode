@@ -42,6 +42,7 @@ default_images = {
     "sd2": 10,
     "sdxl": 10,
     "sdxl-t": 10,
+    "sd3-m": 5,
 }
 images = {}
 
