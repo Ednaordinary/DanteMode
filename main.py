@@ -1,8 +1,8 @@
 import sys
 
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
-from models.intermediate import IntermediateOutput, IntermediateOptimizedModel
-from models.sd import SDXLModel
+from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
+from models.sd import SDXLModel, SDXLTModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
 from dotenv import load_dotenv
@@ -27,13 +27,15 @@ current_model_path = None
 model_translations = {
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=50, steps=30,
                                      mini_vae="madebyollin/taesd"),
+    "sd2": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-2-1", out_type="image", max_latent=30, steps=30,
+                                     mini_vae="madebyollin/taesd"),
     "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=15, steps=35,
                       mini_vae="madebyollin/taesdxl"),
-    "sdxl-t": SDXLModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=15, steps=4,
-                      mini_vae="madebyollin/taesdxl"),
+    "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
 }
 default_images = {
     "sd": 10,
+    "sd2": 10,
     "sdxl": 10,
     "sdxl-t": 10,
 }
@@ -155,6 +157,10 @@ async def async_model_runner():
                         #if not finalized[interaction]:
                         if True:
                             print("unfinalized")
+                            for prompt in now:
+                                if prompt.interaction == interaction:
+                                    this_request = prompt
+                                    break
                             sendable_images = [None] * this_request.amount
                             for_decoding = []
                             for image in images[interaction]:
@@ -209,13 +215,11 @@ async def async_model_runner():
                             asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
                                 discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
                                 enumerate(sendable_images)]), loop=client.loop)
-                    try:
-                        del sendable_images
-                    except: pass
+                            del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
                 if isinstance(i, RunStatus):
-                    if limiter + 1.0 < time.time():
+                    if limiter + 2.0 < time.time():
                         limiter = time.time()
                         for interaction in list(set(i.interactions)):
                             print(interaction)
@@ -267,6 +271,7 @@ async def async_model_runner():
                                 for x in i.interactions:
                                     if x == interaction:
                                         current += 1
+                                del x
                                 progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
                                         i.total[0] * this_request.amount)
                                 send_message = str(round(progress, 2)) + "% " + str(
@@ -279,9 +284,7 @@ async def async_model_runner():
                                 asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, [
                                     discord.File(fp=x, filename=str(idx) + ".jpg")
                                     for idx, x in enumerate(sendable_images)]), loop=client.loop)
-                    try:
-                        del sendable_images
-                    except: pass
+                                del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
             print(run_queue)
@@ -340,7 +343,7 @@ async def generate(
     if interaction.user.id == 381983555930292224:
         global default_images
         global prompt_queue
-        if not model: model = "sd"
+        if not model: model = "sdxl-t"
         if not images: images = default_images[model]
         if not images_multiplier: images_multiplier = 1
         if not negative_prompt: negative_prompt = ""

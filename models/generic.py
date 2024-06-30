@@ -60,9 +60,11 @@ class GenericModel:
     async def call(self, prompts):
         self.to("cuda")
 
-        def threaded_model(self, model, prompts, negative_prompts, steps, callback):
-            self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback, callback_steps=1)
-
+        def threaded_model(model, prompts, negative_prompts, steps, callback):
+            try:
+                self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps, callback=callback, callback_steps=1)
+            except:
+                self.out = [[]]
         def progress_callback(i, t, latents):
             self.step = i
 
@@ -85,5 +87,3 @@ class GenericModel:
             for idx, out in enumerate(self.out[0]):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
-                                    #interaction=prompts[i:i + self.max_latent][idx].interaction,
-                                    #index=prompts[i:i + self.max_latent][idx].index)

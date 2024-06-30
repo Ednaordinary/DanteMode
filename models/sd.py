@@ -1,6 +1,12 @@
+import threading
+import time
+
 from DeepCache import DeepCacheSDHelper
-from .intermediate import IntermediateOptimizedModel
-from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler
+
+from .generic import GenericOutput, FinalOutput, RunStatus, GenericModel
+from .intermediate import IntermediateOptimizedModel, IntermediateModel, IntermediateOutput
+from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler, \
+    AutoPipelineForText2Image
 import torch
 import gc
 
@@ -20,5 +26,21 @@ class SDXLModel(IntermediateOptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
-        #self.mini_vae.enable_slicing()
-        #self.mini_vae.enable_tiling()
+
+class SDXLTModel(GenericModel):
+    def to(self, device):
+        self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None, variant="fp16", use_safetensors=True)
+        self.model = self.model.to(device)
+        self.model.vae.enable_slicing()
+    async def call(self, prompts):
+        self.to("cuda")
+        for i in range(0, len(prompts), self.max_latent):
+            #For SDXL Turbo we don't bother with run status's, it's too fast and just rate limits us
+            try:
+                self.out = self.model([x.prompt for x in prompts[i:i + self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i + self.max_latent]], num_inference_steps=self.steps, guidance_scale=0.0)
+            except:
+                self.out = [[]]
+            outputs = []
+            for idx, out in enumerate(self.out[0]):
+                outputs.append(GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
+            yield FinalOutput(outputs=outputs)
