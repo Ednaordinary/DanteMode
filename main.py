@@ -2,7 +2,7 @@ import sys
 
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
-from models.sd import SDXLModel, SDXLTModel
+from models.sd import SDXLModel, SDXLTModel, SD3Model
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil
 from dotenv import load_dotenv
@@ -16,6 +16,8 @@ import PIL
 import gc
 import io
 import os
+
+torch.backends.cuda.matmul.allow_tf32 = True
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -32,6 +34,8 @@ model_translations = {
     "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=15, steps=35,
                       mini_vae="madebyollin/taesdxl"),
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
+    "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
+                      mini_vae="madebyollin/taesd3"),
 }
 default_images = {
     "sd": 10,

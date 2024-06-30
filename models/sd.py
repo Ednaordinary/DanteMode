@@ -6,7 +6,7 @@ from DeepCache import DeepCacheSDHelper
 from .generic import GenericOutput, FinalOutput, RunStatus, GenericModel
 from .intermediate import IntermediateOptimizedModel, IntermediateModel, IntermediateOutput
 from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler, \
-    AutoPipelineForText2Image
+    AutoPipelineForText2Image, StableDiffusion3Pipeline
 import torch
 import gc
 
@@ -44,3 +44,14 @@ class SDXLTModel(GenericModel):
             for idx, out in enumerate(self.out[0]):
                 outputs.append(GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
+
+class SD3Model(IntermediateModel):
+    def to(self, device):
+        if not self.model:
+            self.model = StableDiffusion3Pipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None, use_safetensors=True)
+        self.model = self.model.to(device)
+        self.model.vae.enable_slicing()
+        if isinstance(self.mini_vae, str):
+            self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
+                                                            torch_dtype=torch.float16)
+        self.mini_vae.to(device)
