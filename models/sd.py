@@ -79,9 +79,15 @@ class SDXLJXModel(IntermediateOptimizedModel):
 
 class SDXLTModel(GenericModel):
     def to(self, device):
-        self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                               safety_checker=None, variant="fp16",
-                                                               use_safetensors=True)
+        try:
+            if not self.model:
+                self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                       safety_checker=None, variant="fp16",
+                                                                       use_safetensors=True)
+        except:
+            self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                   safety_checker=None, variant="fp16",
+                                                                   use_safetensors=True)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
 
