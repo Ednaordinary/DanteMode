@@ -547,6 +547,26 @@ async def generate(
         await interaction.channel.send(
             "<@381983555930292224> PUT ME DOWN NOW :rage: :rage: :face_with_symbols_over_mouth: :face_with_symbols_over_mouth: ")
 
+live_sessions = {}
+
+@client.slash_command(description="Enter a Dante Live session. Send this command to end your session.")
+async def live(
+        interaction: discord.Interaction,
+        prompt: str,
+        negative_prompt: Optional[str],
+):
+    interaction.response.send("Live session ended.")
+
+@live.on_autocomplete("prompt")
+async def live_prompt(interaction: discord.Interaction, prompt: str, negative_prompt: Optional[int] = None):
+    try:
+        live_sessions[interaction.user]
+    except:
+        live_message = await interaction.channel.send("Live session started.")
+        live_sessions[interaction.user] = live_message
+    else:
+        live_message = live_sessions[interaction.user]
+
 
 threading.Thread(target=model_factory, daemon=True).start()
 threading.Thread(target=model_runner, daemon=True).start()

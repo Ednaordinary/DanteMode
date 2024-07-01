@@ -140,7 +140,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
             try:
                 self.image_model.to("cpu")
                 self.model.to("cuda")
-                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=12, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
+                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -177,24 +177,25 @@ class SVDVideoModel(IntermediateOptimizedModel):
                                     interactions=[x.interaction for x in prompts[i:i + 10]])
                     self.intermediate_update = False
                 time.sleep(0.01)
+            for i, out in enumerate(self.out):
+                yield IntermediateOutput(output=out, out_type="image",
+                                         prompt=prompts[i:i + 10][i])
+            yield RunStatus(current=self.steps / 2,
+                            total=self.steps,
+                            interactions=[x.interaction for x in prompts[i:i + 10]])
         print(self.out)
-        for i in range(0, len(self.out), self.max_latent):
+        for i, out in enumerate(self.out):
             model_thread = threading.Thread(target=threaded_model,
-                                            args=[self.out[i:i + self.max_latent], self.steps, progress_callback])
+                                                 args=[out, self.steps, progress_callback])
             model_thread.start()
             step = 0
             self.step = 0
             while model_thread.is_alive():
                 if step != self.step:
-                    print(self.step, self.steps)
-                    yield RunStatus(current=(self.step+self.steps)/2,
-                                    total=self.steps,
-                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
+                    yield RunStatus(current=(self.step + self.steps) / 2,
+                                                 total=self.steps,
+                                                 interactions=[prompts[i].interaction])
                     step = self.step
                 time.sleep(0.01)
-            outputs = []
-            for idx, out in enumerate(self.out):
-                print(out)
-                outputs.append(
-                    GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
+            outputs = [GenericOutput(output=self.out[0], out_type=self.out_type, prompt=prompts[i])]
             yield FinalOutput(outputs=outputs)
