@@ -252,6 +252,7 @@ async def async_model_runner():
                                             image.prompt.index) + ".jpg")
                                     elif image.out_type[0] == "video-zs":
                                         # unfortunately, we have to make a temporary file
+                                        print(image.output)
                                         video_path = str(random.randint(1, 10000000)) + ".mp4"
                                         export_to_video(image.output, video_path)
                                         subprocess.check_call(
@@ -292,7 +293,6 @@ async def async_model_runner():
                                     imagebn.seek(0)
                                     if images[interaction][image.prompt.index] == image:
                                         images[interaction][image.prompt.index].output = tmp_image
-                                    del image.output
                                     gc.collect()
                                     torch.cuda.empty_cache()
                                     sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
@@ -364,6 +364,7 @@ async def async_model_runner():
                                             elif image.out_type[0] == "video-zs":
                                                 # unfortunately, we have to make a temporary file
                                                 # I kinda hate this method, but it's the only way I found
+                                                print(image.output)
                                                 video_path = str(random.randint(1, 10000000)) + ".mp4"
                                                 export_to_video(image.output, video_path)
                                                 # export_to_video exports a discord unplayable video, must reencode
@@ -408,7 +409,6 @@ async def async_model_runner():
                                             imagebn.seek(0)
                                             if images[interaction][image.prompt.index] == image:
                                                 images[interaction][image.prompt.index].output = tmp_image
-                                            del image.output
                                             gc.collect()
                                             torch.cuda.empty_cache()
                                             sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
@@ -425,7 +425,6 @@ async def async_model_runner():
                                     for x in i.interactions:
                                         if x == interaction:
                                             current += 1
-                                    del x
                                     progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
                                             i.total[0] * this_request.amount)
                                     send_message = str(round(progress, 2)) + "% " + str(
@@ -460,7 +459,6 @@ async def async_model_runner():
                                     for x in i.interactions:
                                         if x == interaction:
                                             current += 1
-                                    del x
                                     progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
                                             i.total[0] * this_request.amount)
                                     send_message = str(round(progress, 2)) + "% " + str(

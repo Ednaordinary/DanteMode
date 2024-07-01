@@ -108,6 +108,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
 
     def del_model(self):
         del self.model
+        del self.image_model
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -120,10 +121,11 @@ class SVDVideoModel(IntermediateOptimizedModel):
             try:
                 self.model.to("cpu")
                 self.image_model.to("cuda")
-                self.out = self.image_model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
+                for x in self.image_model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
-                                          "latents"], height=576, width=1024).images
+                                          "latents"], height=576, width=1024).images:
+                    self.out.append(x)
                 print(self.out)
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -138,7 +140,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
             try:
                 self.image_model.to("cpu")
                 self.model.to("cuda")
-                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
+                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=12, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -156,19 +158,18 @@ class SVDVideoModel(IntermediateOptimizedModel):
             return kwargs
 
         for i in range(0, len(prompts), 10):
+            self.out = []
             image_model_thread = threading.Thread(target=image_threaded_model,
                                             args=[[x.prompt for x in prompts[i:i + 10]],
                                                   [x.negative_prompt for x in prompts[i:i + 10]],
                                                   self.steps, intermediate_callback])
             image_model_thread.start()
-            step = 0
-            self.step = 0
+            self.image_step = 0
             self.intermediates = None
             self.intermediate_update = False
             while image_model_thread.is_alive():
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
-                        print(idx)
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
                                                  prompt=prompts[i:i + 10][idx])
                     yield RunStatus(current=self.image_step/2,
@@ -176,14 +177,16 @@ class SVDVideoModel(IntermediateOptimizedModel):
                                     interactions=[x.interaction for x in prompts[i:i + 10]])
                     self.intermediate_update = False
                 time.sleep(0.01)
-        for i in range(0, len(prompts), self.max_latent):
+        print(self.out)
+        for i in range(0, len(self.out), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,
-                                            args=[self.out, self.steps, progress_callback])
+                                            args=[self.out[i:i + self.max_latent], self.steps, progress_callback])
             model_thread.start()
+            step = 0
             self.step = 0
-            self.image_step = 0
             while model_thread.is_alive():
                 if step != self.step:
+                    print(self.step, self.steps)
                     yield RunStatus(current=(self.step+self.steps)/2,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
