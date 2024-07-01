@@ -16,7 +16,7 @@ class OptimizedModel(GenericModel):
 
     async def call(self, prompts):
         self.to("cuda")
-        self.helper.set_params(cache_interval=1, cache_branch_id=0)
+        self.helper.set_params(cache_interval=2, cache_branch_id=0)
         self.helper.enable()
         def threaded_model(model, prompts, negative_prompts, steps, callback):
             try:
