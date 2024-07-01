@@ -79,10 +79,10 @@ images = {}
 async def edit_any_message(message, content, files, view, request):
     if view == "AgainAndUpscale":
         view = AgainAndUpscaleButton(request=request)
-    for i in range(5): # Sometimes we'll get mac address errors due to load balancing
+    for i in range(5):  # Sometimes we'll get mac address errors due to load balancing
         try:
             params = {"content": content, "files": files, "view": view}
-            params = {k:v for k,v in params.items() if v is not None}
+            params = {k: v for k, v in params.items() if v is not None}
             if isinstance(message, discord.Interaction):
                 await message.edit_original_message(**params)
             else:
@@ -96,6 +96,7 @@ async def edit_any_message(message, content, files, view, request):
         else:
             return
 
+
 class AgainButton(discord.ui.View):
     def __init__(self, *, timeout=None, request):
         super().__init__(timeout=timeout)
@@ -106,11 +107,14 @@ class AgainButton(discord.ui.View):
         message = await interaction.channel.send("Generation has been queued.", view=self)
         global prompt_queue
         prompt_queue.append(
-            FactoryRequest(model=self.request.model, prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
+            FactoryRequest(model=self.request.model, prompt=self.request.prompt,
+                           negative_prompt=self.request.negative_prompt,
                            amount=self.request.amount,
                            interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
+
+
 class AgainAndUpscaleButton(discord.ui.View):
     def __init__(self, *, timeout=None, request):
         super().__init__(timeout=timeout)
@@ -121,11 +125,13 @@ class AgainAndUpscaleButton(discord.ui.View):
         message = await interaction.channel.send("Generation has been queued.", view=self)
         global prompt_queue
         prompt_queue.append(
-            FactoryRequest(model=self.request.model, prompt=self.request.prompt, negative_prompt=self.request.negative_prompt,
+            FactoryRequest(model=self.request.model, prompt=self.request.prompt,
+                           negative_prompt=self.request.negative_prompt,
                            amount=self.request.amount,
                            interaction=message))
         button.style = discord.ButtonStyle.secondary
         await interaction.response.edit_message(view=self)
+
     @discord.ui.button(label="Upscale", style=discord.ButtonStyle.primary)
     async def upscale_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         message = await interaction.channel.send("Upscale has been queued.")
@@ -137,9 +143,12 @@ class AgainAndUpscaleButton(discord.ui.View):
             image = await attachment.read()
             #image.seek(0)
             images.append(Image.open(io.BytesIO(image)).convert("RGB").resize((512, 512), Image.Resampling.LANCZOS))
-        prompt_queue.append(FactoryRequest(model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1, steps=40), prompt=images, negative_prompt="",
-                           amount=len(interaction.message.attachments),
-                           interaction=message))
+        prompt_queue.append(FactoryRequest(
+            model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1,
+                                  steps=40), prompt=images, negative_prompt="",
+            amount=len(interaction.message.attachments),
+            interaction=message))
+
 
 class FactoryRequest:
     def __init__(self, model, prompt, negative_prompt, amount, interaction):
@@ -174,7 +183,8 @@ def model_factory():
                 #asyncio.run_coroutine_threadsafe(
                 #    coro=prompt.interaction.edit_original_message(content="Model loaded to " + device), loop=client.loop)
                 asyncio.run_coroutine_threadsafe(
-                    coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None), loop=client.loop
+                    coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None),
+                    loop=client.loop
                 )
                 pop_amt += 1
             for i in range(pop_amt): prompt_queue.pop(0)
@@ -212,15 +222,16 @@ async def async_model_runner():
             images[request.interaction] = [None] * request.amount
             updated[request.interaction] = False
             finalized[request.interaction] = False
-            asyncio.run_coroutine_threadsafe(coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
-                                             loop=client.loop)
+            asyncio.run_coroutine_threadsafe(
+                coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
+                loop=client.loop)
         limiter = time.time()
         with torch.no_grad():
             async for i in now[0].model.call(prompts):
                 if isinstance(i, FinalOutput):
                     for output in i.outputs:
                         images[output.prompt.interaction][output.prompt.index] = output
-                        updated[output.prompt.interaction] = False # we are about to make this false, so
+                        updated[output.prompt.interaction] = False  # we are about to make this false, so
                     for interaction in list(set([x.prompt.interaction for x in i.outputs])):
                         if True:
                             for prompt in now:
@@ -235,7 +246,8 @@ async def async_model_runner():
                                         imagebn = io.BytesIO()
                                         image.output.save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
-                                        sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(image.prompt.index) + ".jpg")
+                                        sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
+                                            image.prompt.index) + ".jpg")
                                     elif now[0].model.out_type == "video-zs":
                                         # unfortunately, we have to make a temporary file
                                         video_path = str(random.randint(1, 10000000)) + ".mp4"
@@ -245,7 +257,8 @@ async def async_model_runner():
                                         with open("redo-" + video_path, "rb") as video_file:
                                             videobn = io.BytesIO(video_file.read())
                                         videobn.seek(0)
-                                        sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(image.prompt.index) + ".mp4")
+                                        sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(
+                                            image.prompt.index) + ".mp4")
                                         os.remove(video_path)
                                         os.remove("redo-" + video_path)
                                     elif now[0].model.out_type == "s-audio":
@@ -278,7 +291,8 @@ async def async_model_runner():
                                     del image.output
                                     gc.collect()
                                     torch.cuda.empty_cache()
-                                    sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(image.prompt.index) + ".jpg")
+                                    sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
+                                        image.prompt.index) + ".jpg")
                             sendable_images = [x for x in sendable_images if x != None]
                             output_count = 0
                             for image in images[interaction]:
@@ -304,11 +318,19 @@ async def async_model_runner():
                                 if finalized[interaction]:
                                     view_type = "AgainAndUpscale"
                             if isinstance(now[0].model, LDMUpscaleModel):
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(sendable_images)) + " images upscaled in " + str(round(time.time() - start_time, 2)) + "s", [
-                                    discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
-                                    enumerate(sendable_images)], None, None), loop=client.loop)
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(
+                                    sendable_images)) + " images upscaled in " + str(
+                                    round(time.time() - start_time, 2)) + "s", [
+                                                                                           discord.File(fp=x,
+                                                                                                        filename=str(
+                                                                                                            idx) + ".jpg")
+                                                                                           for idx, x in
+                                                                                           enumerate(sendable_images)],
+                                                                                       None, None), loop=client.loop)
                             else:
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, view_type, this_request), loop=client.loop)
+                                asyncio.run_coroutine_threadsafe(
+                                    coro=edit_any_message(interaction, send_message, sendable_images, view_type,
+                                                          this_request), loop=client.loop)
                             del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
@@ -332,30 +354,38 @@ async def async_model_runner():
                                                 imagebn = io.BytesIO()
                                                 image.output.save(imagebn, format='JPEG', quality=80)
                                                 imagebn.seek(0)
-                                                sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
-                                                    image.prompt.index) + ".jpg")
+                                                sendable_images[image.prompt.index] = discord.File(fp=imagebn,
+                                                                                                   filename=str(
+                                                                                                       image.prompt.index) + ".jpg")
                                             elif now[0].model.out_type == "video-zs":
                                                 # unfortunately, we have to make a temporary file
                                                 # I kinda hate this method, but it's the only way I found
                                                 video_path = str(random.randint(1, 10000000)) + ".mp4"
                                                 export_to_video(image.output, video_path)
                                                 # export_to_video exports a discord unplayable video, must reencode
-                                                subprocess.check_call("ffmpeg -i " + str(video_path) + " redo-" + str(video_path), shell=True)
+                                                subprocess.check_call(
+                                                    "ffmpeg -i " + str(video_path) + " redo-" + str(video_path),
+                                                    shell=True)
                                                 with open("redo-" + video_path, "rb") as video_file:
                                                     videobn = io.BytesIO(video_file.read())
                                                 videobn.seek(0)
-                                                sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(
-                                                    image.prompt.index) + ".mp4")
+                                                sendable_images[image.prompt.index] = discord.File(fp=videobn,
+                                                                                                   filename=str(
+                                                                                                       image.prompt.index) + ".mp4")
                                                 os.remove(video_path)
                                                 os.remove("redo-" + video_path)
                                             elif now[0].model.out_type == "s-audio":
                                                 audio_path = str(random.randint(1, 10000000))
                                                 torchaudio.save(audio_path + ".wav", image.output, 44100)
-                                                subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(os.urandom(12).hex()[:6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4", shell=True)
+                                                subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
+                                                    os.urandom(12).hex()[
+                                                    :6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4",
+                                                                      shell=True)
                                                 with open(audio_path + ".wav", "rb") as audio_file:
                                                     audiobn = io.BytesIO(audio_file.read())
-                                                sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
-                                                    image.prompt.index) + ".mp4")
+                                                sendable_images[image.prompt.index] = discord.File(fp=audiobn,
+                                                                                                   filename=str(
+                                                                                                       image.prompt.index) + ".mp4")
                                                 os.remove(audio_path + ".wav")
                                                 os.remove(audio_path + ".mp4")
                                             else:
@@ -379,11 +409,12 @@ async def async_model_runner():
                                             gc.collect()
                                             torch.cuda.empty_cache()
                                             sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
-                                                    image.prompt.index) + ".jpg")
+                                                image.prompt.index) + ".jpg")
                                     sendable_images = [x for x in sendable_images if x != None]
                                     output_count = 0
                                     for image in images[interaction]:
-                                        if isinstance(image, GenericOutput) and not isinstance(image, IntermediateOutput):
+                                        if isinstance(image, GenericOutput) and not isinstance(image,
+                                                                                               IntermediateOutput):
                                             output_count += 1
                                     if output_count == len(images[interaction]):
                                         finalized[interaction] = True
@@ -405,7 +436,9 @@ async def async_model_runner():
                                     #                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")
                                     #                                                  for idx, x in enumerate(sendable_images)]),
                                     #    loop=client.loop)
-                                    asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, None, None), loop=client.loop)
+                                    asyncio.run_coroutine_threadsafe(
+                                        coro=edit_any_message(interaction, send_message, sendable_images, None, None),
+                                        loop=client.loop)
                                     del sendable_images
                                 else:
                                     for prompt in now:
@@ -491,8 +524,8 @@ async def generate(
         if not images_multiplier: images_multiplier = 1
         if not negative_prompt: negative_prompt = ""
         request = FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
-                           amount=images,
-                           interaction=interaction)
+                                 amount=images,
+                                 interaction=interaction)
         prompt_queue.append(request)
         await interaction.response.send_message("Generation has been queued.", view=AgainButton(request=request))
         #dont batch because model will be loaded to gpu anyways
@@ -501,8 +534,9 @@ async def generate(
             prompt_queue.append(
                 FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
                                amount=images,
-                               interaction=(await interaction.channel.send("Generation has been queued.", view=AgainButton(request=request)))))
-                # request can be reused since the button is request independent
+                               interaction=(await interaction.channel.send("Generation has been queued.",
+                                                                           view=AgainButton(request=request)))))
+            # request can be reused since the button is request independent
     else:
         await interaction.response.send_message(
             "Dante is currently in a development state for Dante4. Please come back later")

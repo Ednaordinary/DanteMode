@@ -8,6 +8,7 @@ from PIL import Image
 from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, StableVideoDiffusionPipeline, AutoencoderKL
 
 from .generic import RunStatus, GenericOutput, FinalOutput
+from .intermediate import IntermediateOutput
 from .optimized import OptimizedModel
 
 
@@ -113,9 +114,20 @@ class SVDVideoModel(OptimizedModel):
         self.helper.enable()
         self.helper2.set_params(cache_interval=1, cache_branch_id=0)
         self.helper2.enable()
-        def threaded_model(prompts, negative_prompts, steps, callback):
+
+        def image_threaded_model(prompts, negative_prompts, steps, callback):
             try:
-                self.out = self.image_model
+                self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
+                                      num_inference_steps=steps, callback_on_step_end=callback,
+                                      callback_on_step_end_tensor_inputs=[
+                                          "latents"])
+            except Exception as e:
+                print(repr(e))
+                self.out = [[]]
+                pass
+
+        def threaded_model(prompts, steps, callback):
+            try:
                 self.out = self.model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
                                  callback=callback, callback_steps=1, height=320, width=576, num_frames=24)
             except Exception as e:
@@ -126,14 +138,46 @@ class SVDVideoModel(OptimizedModel):
         def progress_callback(i, t, latents):
             self.step = i
 
+        def intermediate_callback(pipe, i, t, kwargs):
+            latents = kwargs["latents"]
+            #decoded = self.mini_vae.decode(latents).sample
+            for_stack = []
+            #for decode in decoded:
+            #    decode = decode.to('cpu', non_blocking=False)
+            #    decode = numpy_to_pil((decode / 2 + 0.5).permute(1, 2, 0).numpy())[0]
+            #    for_stack.append(decode)
+            #self.stack.append(np.hstack(for_stack))
+            print(latents.shape)
+            self.image_step = i
+            self.intermediates = latents
+            self.intermediate_update = True
+            return kwargs
+
         for i in range(0, len(prompts), self.max_latent):
-            model_thread = threading.Thread(target=threaded_model,
+            image_model_thread = threading.Thread(target=threaded_model,
                                             args=[[x.prompt for x in prompts[i:i + self.max_latent]],
                                                   [x.negative_prompt for x in prompts[i:i + self.max_latent]],
                                                   self.steps, progress_callback])
-            model_thread.start()
+            image_model_thread.start()
             step = 0
+            self.intermediates = None
+            self.intermediate_update = False
+            while model_thread.is_alive():
+                if self.intermediate_update:
+                    for idx, intermediate in enumerate(self.intermediates):
+                        yield IntermediateOutput(output=intermediate, out_type="latent-image",
+                                                 prompt=current_prompts[idx])
+                    yield RunStatus(current=self.step,
+                                    total=self.steps,
+                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
+                    self.intermediate_update = False
+                time.sleep(0.01)
+            model_thread = threading.Thread(target=threaded_model,
+                                            args=[self.out, self.steps, progress_callback])
+            model_thread.start()
+            self.step
             self.step = 0
+            self.image_step = 0
             while model_thread.is_alive():
                 if step != self.step:
                     yield RunStatus(current=self.step,
