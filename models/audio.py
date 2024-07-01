@@ -36,7 +36,9 @@ class SAUDIOModel(GenericModel):
                 for output in self.out:
                     output = rearrange(output.unsqueeze(0), "b d n -> d (b n)")
                     output = output.to(torch.float32).div(torch.max(torch.abs(output))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
-                    out.append((output, self.sample_rate))
+                    print(output.shape)
+                    out.append(output)
+                print(len(out))
                 self.out = out
             except Exception as e:
                 print(repr(e))
@@ -44,7 +46,7 @@ class SAUDIOModel(GenericModel):
                 pass
 
         def progress_callback(*args, **kwargs):
-            self.step = kwargs["i"]
+            self.step = args[0]['i']
         # def progress_callback(*args, **kwargs):
         #     for arg in args:
         #         print(arg)
@@ -67,7 +69,7 @@ class SAUDIOModel(GenericModel):
                     step = self.step
                 time.sleep(0.01)
             outputs = []
-            for idx, out in enumerate(self.out[0]):
+            for idx, out in enumerate(self.out):
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)

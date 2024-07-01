@@ -56,8 +56,8 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=10, steps=40),
-    "s-audio": SAUDIOModel(path="stabilityai/stable-audio-open-1.0", out_type="s-audio", max_latent=10, steps=100),
+    "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=5, steps=40),
+    "s-audio": SAUDIOModel(path="stabilityai/stable-audio-open-1.0", out_type="s-audio", max_latent=5, steps=100),
 }
 default_images = {
     "sd": 10,
@@ -249,15 +249,17 @@ async def async_model_runner():
                                         os.remove("redo-" + video_path)
                                     elif now[0].model.out_type == "s-audio":
                                         audio_path = str(random.randint(1, 10000000))
-                                        torchaudio.save(audio_path + ".wav", image[0], image[1])
+                                        torchaudio.save(audio_path + ".wav", image.output, 44100)
                                         subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
                                             os.urandom(12).hex()[
                                             :6]) + ':size=512x512" -i ' + audio_path + '.wav  -t 45 ' + audio_path + ".mp4",
                                                               shell=True)
-                                        with open(audio_path + ".wav", "rb") as audio_file:
+                                        with open(audio_path + ".mp4", "rb") as audio_file:
                                             audiobn = io.BytesIO(audio_file.read())
                                         sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
                                             image.prompt.index) + ".mp4")
+                                        os.remove(audio_path + ".wav")
+                                        os.remove(audio_path + ".mp4")
                                     else:
                                         for_decoding.append(image)
                             if for_decoding != None:
@@ -295,10 +297,11 @@ async def async_model_runner():
                                         prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                             else:
                                 send_message = None
-                            if isinstance(now[0].model, ZSVideoModel):
+                            if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model, SAUDIOModel):
                                 view_type = None
                             else:
-                                view_type = "AgainAndUpscale"
+                                if finalized[interaction]:
+                                    view_type = "AgainAndUpscale"
                             if isinstance(now[0].model, LDMUpscaleModel):
                                 asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(sendable_images)) + " images upscaled in " + str(round(time.time() - start_time, 2)) + "s", [
                                     discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
@@ -343,12 +346,14 @@ async def async_model_runner():
                                             os.remove("redo-" + video_path)
                                         elif now[0].model.out_type == "s-audio":
                                             audio_path = str(random.randint(1, 10000000))
-                                            torchaudio.save(audio_path + ".wav", image[0], image[1])
+                                            torchaudio.save(audio_path + ".wav", image.output, 44100)
                                             subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(os.urandom(12).hex()[:6]) + ':size=512x512" -i ' + audio_path + '.wav  -t 45 ' + audio_path + ".mp4", shell=True)
                                             with open(audio_path + ".wav", "rb") as audio_file:
                                                 audiobn = io.BytesIO(audio_file.read())
                                             sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
                                                 image.prompt.index) + ".mp4")
+                                            os.remove(audio_path + ".wav")
+                                            os.remove(audio_path + ".mp4")
                                         else:
                                             for_decoding.append(image)
                                 if for_decoding != None:
@@ -387,16 +392,16 @@ async def async_model_runner():
                                         i.total[0] * this_request.amount)
                                 send_message = str(round(progress, 2)) + "% " + str(
                                     round(time.time() - start_time, 2)) + "s"
-                                if isinstance(now[0].model, ZSVideoModel):
-                                    view_type = None
-                                else:
+                                if finalized[interaction]:
                                     view_type = "AgainAndUpscale"
+                                else:
+                                    view_type = None
                                 #asyncio.run_coroutine_threadsafe(
                                 #    coro=interaction.edit_original_message(content=send_message,
                                 #                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")
                                 #                                                  for idx, x in enumerate(sendable_images)]),
                                 #    loop=client.loop)
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, view_type, None), loop=client.loop)
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, None, None), loop=client.loop)
                                 del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:

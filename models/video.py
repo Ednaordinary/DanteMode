@@ -18,27 +18,19 @@ class ZSVideoModel(OptimizedModel):
             self.model
         except:
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
-            self.upscale = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
         else:
             if not self.model:
                 self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
                                                                safety_checker=None)
-                self.upscale = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_XL", torch_dtype=torch.float16)
         self.model = self.model.to(device)
-        self.upscale = self.upscale.to(device)
         self.model.vae.enable_slicing()
-        self.upscale.vae.enable_slicing()
         self.model.scheduler = DPMSolverMultistepScheduler.from_config(self.model.scheduler.config,
-                                                                       use_karras_sigmas=True)  #, use_lu_lambdas=True)
-        self.upscale.scheduler = DPMSolverMultistepScheduler.from_config(self.upscale.scheduler.config,
                                                                        use_karras_sigmas=True)  #, use_lu_lambdas=True)
         self.model.scheduler.algorithm_type = "dpmsolver++"
         self.helper = DeepCacheSDHelper(pipe=self.model)
-        self.helper2 = DeepCacheSDHelper(pipe=self.upscale)
 
     def del_model(self):
         del self.model
-        del self.upscale
         gc.collect()
         torch.cuda.empty_cache()
 
