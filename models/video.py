@@ -47,14 +47,8 @@ class ZSVideoModel(OptimizedModel):
 
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
-                self.model.to("cuda")
                 self.out = self.model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
-                                 callback=callback, callback_steps=1, height=320, width=576, num_frames=24, output_type="latent")
-                print(self.out.frames.shape)
-                self.model.to("cpu")
-                #self.out = []
-                #self.out = [Image.fromarray(frame).resize((1024, 576)) for frame in self.out]
-                self.out = self.upscale(prompts, video=self.out.frames, strength=0.6).frames
+                                 callback=callback, callback_steps=1, height=320, width=576, num_frames=24)
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
