@@ -22,6 +22,7 @@ import io
 import os
 
 from models.upscale import LDMUpscaleModel
+from models.video import ZSVideoModel
 
 torch.backends.cuda.matmul.allow_tf32 = True
 
@@ -52,7 +53,7 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "zs-video": OptimizedModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=10, steps=30),
+    "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=10, steps=40),
 }
 default_images = {
     "sd": 10,
@@ -233,11 +234,14 @@ async def async_model_runner():
                                         # unfortunately, we have to make a temporary file
                                         video_path = str(random.randint(1, 10000000)) + ".mp4"
                                         export_to_video(image.output, video_path)
-                                        with open(video_path, "rb") as video_file:
+                                        subprocess.check_call(
+                                            "ffmpeg -i " + str(video_path) + " redo-" + str(video_path), shell=True)
+                                        with open("redo-" + video_path, "rb") as video_file:
                                             videobn = io.BytesIO(video_file.read())
                                         videobn.seek(0)
                                         sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(image.prompt.index) + ".mp4")
                                         os.remove(video_path)
+                                        os.remove("redo-" + video_path)
                                     else:
                                         for_decoding.append(image)
                             if for_decoding != None:
@@ -275,12 +279,16 @@ async def async_model_runner():
                                         prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                             else:
                                 send_message = None
+                            if isinstance(now[0].model, ZSVideoModel):
+                                view_type = None
+                            else:
+                                view_type = "AgainAndUpscale"
                             if isinstance(now[0].model, LDMUpscaleModel):
                                 asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(sendable_images)) + " images upscaled in " + str(round(time.time() - start_time, 2)) + "s", [
                                     discord.File(fp=x, filename=str(idx) + ".jpg") for idx, x in
                                     enumerate(sendable_images)], None, None), loop=client.loop)
                             else:
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, "AgainAndUpscale", this_request), loop=client.loop)
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, view_type, this_request), loop=client.loop)
                             del sendable_images
                 if isinstance(i, IntermediateOutput):
                     images[i.prompt.interaction][i.prompt.index] = i
@@ -305,16 +313,18 @@ async def async_model_runner():
                                                 image.prompt.index) + ".jpg")
                                         elif now[0].model.out_type == "video-zs":
                                             # unfortunately, we have to make a temporary file
+                                            # I kinda hate this method, but it's the only way I found
                                             video_path = str(random.randint(1, 10000000)) + ".mp4"
                                             export_to_video(image.output, video_path)
                                             # export_to_video exports a discord unplayable video, must reencode
-                                            subprocess.check_call("ffmpeg -i " + str())
-                                            with open(video_path, "rb") as video_file:
+                                            subprocess.check_call("ffmpeg -i " + str(video_path) + " redo-" + str(video_path), shell=True)
+                                            with open("redo-" + video_path, "rb") as video_file:
                                                 videobn = io.BytesIO(video_file.read())
                                             videobn.seek(0)
                                             sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(
                                                 image.prompt.index) + ".mp4")
                                             os.remove(video_path)
+                                            os.remove("redo-" + video_path)
                                         else:
                                             for_decoding.append(image)
                                 if for_decoding != None:
@@ -353,12 +363,16 @@ async def async_model_runner():
                                         i.total[0] * this_request.amount)
                                 send_message = str(round(progress, 2)) + "% " + str(
                                     round(time.time() - start_time, 2)) + "s"
+                                if isinstance(now[0].model, ZSVideoModel):
+                                    view_type = None
+                                else:
+                                    view_type = "AgainAndUpscale"
                                 #asyncio.run_coroutine_threadsafe(
                                 #    coro=interaction.edit_original_message(content=send_message,
                                 #                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")
                                 #                                                  for idx, x in enumerate(sendable_images)]),
                                 #    loop=client.loop)
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, None, None), loop=client.loop)
+                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, send_message, sendable_images, view_type, None), loop=client.loop)
                                 del sendable_images
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path:
