@@ -2,6 +2,9 @@ import random
 import subprocess
 import sys
 
+import torchaudio
+
+from models.audio import SAUDIOModel
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
@@ -54,6 +57,7 @@ model_translations = {
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=10, steps=40),
+    "s-audio": SAUDIOModel(path="stabilityai/stable-audio-open-1.0", out_type="s-audio", max_latent=10, steps=100),
 }
 default_images = {
     "sd": 10,
@@ -67,6 +71,7 @@ default_images = {
     "scasc": 10,
     "pa-si": 10,
     "zs-video": 3,
+    "s-audio": 3,
 }
 images = {}
 
@@ -242,6 +247,17 @@ async def async_model_runner():
                                         sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(image.prompt.index) + ".mp4")
                                         os.remove(video_path)
                                         os.remove("redo-" + video_path)
+                                    elif now[0].model.out_type == "s-audio":
+                                        audio_path = str(random.randint(1, 10000000))
+                                        torchaudio.save(audio_path + ".wav", image[0], image[1])
+                                        subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
+                                            os.urandom(12).hex()[
+                                            :6]) + ':size=512x512" -i ' + audio_path + '.wav  -t 45 ' + audio_path + ".mp4",
+                                                              shell=True)
+                                        with open(audio_path + ".wav", "rb") as audio_file:
+                                            audiobn = io.BytesIO(audio_file.read())
+                                        sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
+                                            image.prompt.index) + ".mp4")
                                     else:
                                         for_decoding.append(image)
                             if for_decoding != None:
@@ -325,6 +341,14 @@ async def async_model_runner():
                                                 image.prompt.index) + ".mp4")
                                             os.remove(video_path)
                                             os.remove("redo-" + video_path)
+                                        elif now[0].model.out_type == "s-audio":
+                                            audio_path = str(random.randint(1, 10000000))
+                                            torchaudio.save(audio_path + ".wav", image[0], image[1])
+                                            subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(os.urandom(12).hex()[:6]) + ':size=512x512" -i ' + audio_path + '.wav  -t 45 ' + audio_path + ".mp4", shell=True)
+                                            with open(audio_path + ".wav", "rb") as audio_file:
+                                                audiobn = io.BytesIO(audio_file.read())
+                                            sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
+                                                image.prompt.index) + ".mp4")
                                         else:
                                             for_decoding.append(image)
                                 if for_decoding != None:
