@@ -84,6 +84,8 @@ async def edit_any_message(message, content, files, view, request):
     for i in range(5):  # Sometimes we'll get mac address errors due to load balancing
         try:
             params = {"content": content, "files": files, "view": view}
+            if "content" in params.keys() and params["content"] != None:
+                params["content"] = params["content"][:-2000] # in the bad case a string is too long
             params = {k: v for k, v in params.items() if v is not None}
             if isinstance(message, discord.Interaction):
                 await message.edit_original_message(**params)
@@ -548,6 +550,24 @@ async def generate(
             "<@381983555930292224> PUT ME DOWN NOW :rage: :rage: :face_with_symbols_over_mouth: :face_with_symbols_over_mouth: ")
 
 live_sessions = {}
+live_threads = {}
+live_prompts = {}
+
+def live_handler(user):
+    global prompt_queue
+    global run_queue
+    thread_self = live_threads[user]
+    while thread_self == live_threads[user]:
+        live_message = live_sessions[user]
+        while live_message in [x.interaction for x in prompt_queue]:
+            time.sleep(0.01)
+        while run_queue != None:
+            time.sleep(0.01)
+        if live_prompts[user] != None:
+            print("adding live prompt")
+            prompt_queue.append(live_prompts[user])
+        last_prompt = live_prompts[user]
+
 
 @client.slash_command(description="Enter a Dante Live session. Send this command to end your session.")
 async def live(
@@ -559,13 +579,22 @@ async def live(
 
 @live.on_autocomplete("prompt")
 async def live_prompt(interaction: discord.Interaction, prompt: str, negative_prompt: Optional[int] = None):
+    await interaction.response.send_autocomplete(["Prompt queued"])
     try:
         live_sessions[interaction.user]
     except:
-        live_message = await interaction.channel.send("Live session started.")
+        live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">: live session queued.")
         live_sessions[interaction.user] = live_message
+        live_thread = threading.Thread(target=live_handler, args=[interaction.user])
+        live_prompts[interaction.user] = None
+        live_threads[interaction.user] = live_thread
+        live_thread.start()
     else:
         live_message = live_sessions[interaction.user]
+    if prompt:
+        live_prompts[interaction.user] = FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt, negative_prompt=negative_prompt,
+                       amount=1,
+                       interaction=live_message)
 
 
 threading.Thread(target=model_factory, daemon=True).start()
