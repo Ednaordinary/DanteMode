@@ -56,7 +56,7 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs", max_latent=5, steps=35, mini_vae="madebyollin/taesdxl"),
+    "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs", max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
     "s-audio": SAUDIOModel(path="stabilityai/stable-audio-open-1.0", out_type="s-audio", max_latent=5, steps=100),
 }
@@ -71,7 +71,7 @@ default_images = {
     "sd3-m": 5,
     "scasc": 10,
     "pa-si": 10,
-    "s-video": 3,
+    "s-video": 1,
     "zs-video": 3,
     "s-audio": 3,
 }
@@ -250,7 +250,7 @@ async def async_model_runner():
                                         imagebn.seek(0)
                                         sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
                                             image.prompt.index) + ".jpg")
-                                    elif image.out_type == "video-zs":
+                                    elif image.out_type[0] == "video-zs":
                                         # unfortunately, we have to make a temporary file
                                         video_path = str(random.randint(1, 10000000)) + ".mp4"
                                         export_to_video(image.output, video_path)
@@ -263,7 +263,7 @@ async def async_model_runner():
                                             image.prompt.index) + ".mp4")
                                         os.remove(video_path)
                                         os.remove("redo-" + video_path)
-                                    elif image.out_type == "s-audio":
+                                    elif image.out_type[0] == "s-audio":
                                         audio_path = str(random.randint(1, 10000000))
                                         torchaudio.save(audio_path + ".wav", image.output, 44100)
                                         subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
@@ -276,17 +276,19 @@ async def async_model_runner():
                                             image.prompt.index) + ".mp4")
                                         os.remove(audio_path + ".wav")
                                         os.remove(audio_path + ".mp4")
-                                    elif image.out_type == "latent-image":
+                                    elif image.out_type[0] == "latent-image":
                                         for_decoding.append(image)
                             if for_decoding != None:
                                 for image in for_decoding:
-                                    tmp_image = now[0].model.mini_vae.decode(image.output).sample
+                                    print(image.output.shape)
+                                    tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
                                     tmp_image = tmp_image.to('cpu', non_blocking=False)
                                     gc.collect()
                                     torch.cuda.empty_cache()
                                     tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                     imagebn = io.BytesIO()
-                                    tmp_image.resize((128, 128)).save(imagebn, format='JPEG', quality=80)
+                                    tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                    tmp_image.save(imagebn, format='JPEG', quality=80)
                                     imagebn.seek(0)
                                     if images[interaction][image.prompt.index] == image:
                                         images[interaction][image.prompt.index].output = tmp_image
@@ -314,7 +316,7 @@ async def async_model_runner():
                                         prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
                             else:
                                 send_message = None
-                            if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model, SAUDIOModel):
+                            if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model, SAUDIOModel) or isinstance(now[0].model, SVDVideoModel):
                                 view_type = None
                             else:
                                 if finalized[interaction]:
@@ -359,7 +361,7 @@ async def async_model_runner():
                                                 sendable_images[image.prompt.index] = discord.File(fp=imagebn,
                                                                                                    filename=str(
                                                                                                        image.prompt.index) + ".jpg")
-                                            elif image.out_type == "video-zs":
+                                            elif image.out_type[0] == "video-zs":
                                                 # unfortunately, we have to make a temporary file
                                                 # I kinda hate this method, but it's the only way I found
                                                 video_path = str(random.randint(1, 10000000)) + ".mp4"
@@ -376,7 +378,7 @@ async def async_model_runner():
                                                                                                        image.prompt.index) + ".mp4")
                                                 os.remove(video_path)
                                                 os.remove("redo-" + video_path)
-                                            elif image.out_type == "s-audio":
+                                            elif image.out_type[0] == "s-audio":
                                                 audio_path = str(random.randint(1, 10000000))
                                                 torchaudio.save(audio_path + ".wav", image.output, 44100)
                                                 subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
@@ -390,20 +392,19 @@ async def async_model_runner():
                                                                                                        image.prompt.index) + ".mp4")
                                                 os.remove(audio_path + ".wav")
                                                 os.remove(audio_path + ".mp4")
-                                            elif image.out_type == "latent-image":
+                                            elif image.out_type[0] == "latent-image":
                                                 for_decoding.append(image)
                                     if for_decoding != None:
                                         for image in for_decoding:
                                             print(image.output.shape)
-                                            tmp_image = now[0].model.mini_vae.decode(image.output).sample
+                                            tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
                                             tmp_image = tmp_image.to('cpu', non_blocking=False)
                                             gc.collect()
                                             torch.cuda.empty_cache()
                                             tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                             imagebn = io.BytesIO()
-                                            #tmp_image.show(
-                                            #    title=image.prompt.prompt + str(image.prompt.index))  # for debugging indexing
-                                            tmp_image.resize((256, 256)).save(imagebn, format='JPEG', quality=80)
+                                            tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                            tmp_image.save(imagebn, format='JPEG', quality=80)
                                             imagebn.seek(0)
                                             if images[interaction][image.prompt.index] == image:
                                                 images[interaction][image.prompt.index].output = tmp_image
@@ -429,10 +430,13 @@ async def async_model_runner():
                                             i.total[0] * this_request.amount)
                                     send_message = str(round(progress, 2)) + "% " + str(
                                         round(time.time() - start_time, 2)) + "s"
-                                    if finalized[interaction]:
-                                        view_type = "AgainAndUpscale"
-                                    else:
+                                    if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,
+                                                                                            SAUDIOModel) or isinstance(
+                                            now[0].model, SVDVideoModel):
                                         view_type = None
+                                    else:
+                                        if finalized[interaction]:
+                                            view_type = "AgainAndUpscale"
                                     #asyncio.run_coroutine_threadsafe(
                                     #    coro=interaction.edit_original_message(content=send_message,
                                     #                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")

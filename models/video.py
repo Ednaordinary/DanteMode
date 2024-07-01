@@ -98,17 +98,13 @@ class SVDVideoModel(IntermediateOptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
-        self.model = self.model.to(device)
+        self.model = self.model.to("cpu")
+        self.image_model.scheduler = DPMSolverMultistepScheduler.from_config(self.image_model.scheduler.config,
+                                                                        use_karras_sigmas=True)
+        self.image_model.scheduler.algorithm_type = "dpmsolver++"
         self.image_model = self.image_model.to(device)
         self.image_model.vae.enable_slicing()
-        self.model.scheduler = DPMSolverMultistepScheduler.from_config(self.model.scheduler.config,
-                                                                       use_karras_sigmas=True)
-        self.image_model.scheduler = DPMSolverMultistepScheduler.from_config(self.model.scheduler.config,
-                                                                       use_karras_sigmas=True)
-        self.model.scheduler.algorithm_type = "dpmsolver++"
-        self.image_model.scheduler.algorithm_type = "dpmsolver++"
-        self.helper = DeepCacheSDHelper(pipe=self.model)
-        self.helper2 = DeepCacheSDHelper(pipe=self.image_model)
+        self.helper = DeepCacheSDHelper(pipe=self.image_model)
 
     def del_model(self):
         del self.model
@@ -117,20 +113,18 @@ class SVDVideoModel(IntermediateOptimizedModel):
 
     async def call(self, prompts):
         self.to("cuda")
-        self.helper.set_params(cache_interval=2, cache_branch_id=0)
+        self.helper.set_params(cache_interval=1, cache_branch_id=0)
         self.helper.enable()
-        self.helper2.set_params(cache_interval=1, cache_branch_id=0)
-        self.helper2.enable()
 
         def image_threaded_model(prompts, negative_prompts, steps, callback):
             try:
+                self.model.to("cpu")
                 self.image_model.to("cuda")
                 self.out = self.image_model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
-                                          "latents"], height=576, width=1024)
+                                          "latents"], height=576, width=1024).images
                 print(self.out)
-                self.image_model.to("cpu")
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -142,7 +136,9 @@ class SVDVideoModel(IntermediateOptimizedModel):
         def threaded_model(prompts, steps, callback):
             print(prompts)
             try:
-                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=5, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
+                self.image_model.to("cpu")
+                self.model.to("cuda")
+                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -159,10 +155,10 @@ class SVDVideoModel(IntermediateOptimizedModel):
             self.intermediate_update = True
             return kwargs
 
-        for i in range(0, len(prompts), self.max_latent):
+        for i in range(0, len(prompts), 10):
             image_model_thread = threading.Thread(target=image_threaded_model,
-                                            args=[[x.prompt for x in prompts[i:i + self.max_latent]],
-                                                  [x.negative_prompt for x in prompts[i:i + self.max_latent]],
+                                            args=[[x.prompt for x in prompts[i:i + 10]],
+                                                  [x.negative_prompt for x in prompts[i:i + 10]],
                                                   self.steps, intermediate_callback])
             image_model_thread.start()
             step = 0
@@ -172,17 +168,18 @@ class SVDVideoModel(IntermediateOptimizedModel):
             while image_model_thread.is_alive():
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
+                        print(idx)
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
-                                                 prompt=prompts[i:i + self.max_latent][idx])
+                                                 prompt=prompts[i:i + 10][idx])
                     yield RunStatus(current=self.image_step/2,
                                     total=self.steps,
-                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
+                                    interactions=[x.interaction for x in prompts[i:i + 10]])
                     self.intermediate_update = False
                 time.sleep(0.01)
+        for i in range(0, len(prompts), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,
                                             args=[self.out, self.steps, progress_callback])
             model_thread.start()
-            self.step
             self.step = 0
             self.image_step = 0
             while model_thread.is_alive():
@@ -194,6 +191,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
                 time.sleep(0.01)
             outputs = []
             for idx, out in enumerate(self.out):
+                print(out)
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
