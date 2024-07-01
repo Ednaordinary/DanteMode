@@ -1,14 +1,17 @@
 import gc
+import os
+import sys
 import threading
 import time
 
 import torch
 from DeepCache import DeepCacheSDHelper
 from PIL import Image
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, StableVideoDiffusionPipeline, AutoencoderKL
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, StableVideoDiffusionPipeline, AutoencoderKL, \
+    AutoencoderTiny
 
 from .generic import RunStatus, GenericOutput, FinalOutput
-from .intermediate import IntermediateOutput
+from .intermediate import IntermediateOutput, IntermediateOptimizedModel
 from .optimized import OptimizedModel
 
 
@@ -73,7 +76,7 @@ class ZSVideoModel(OptimizedModel):
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
 
-class SVDVideoModel(OptimizedModel):
+class SVDVideoModel(IntermediateOptimizedModel):
 
     def to(self, device):
         try:
@@ -91,6 +94,10 @@ class SVDVideoModel(OptimizedModel):
                 self.image_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",
                                                                      torch_dtype=torch.float16, safety_checker=None,
                                                                      vae=vae, variant="fp16", use_safetensors=True)
+        if isinstance(self.mini_vae, str):
+            self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
+                                                            torch_dtype=torch.float16)
+        self.mini_vae.to(device)
         self.model = self.model.to(device)
         self.image_model = self.image_model.to(device)
         self.image_model.vae.enable_slicing()
@@ -117,57 +124,57 @@ class SVDVideoModel(OptimizedModel):
 
         def image_threaded_model(prompts, negative_prompts, steps, callback):
             try:
-                self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
+                self.image_model.to("cuda")
+                self.out = self.image_model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
-                                          "latents"])
+                                          "latents"], height=576, width=1024)
+                print(self.out)
+                self.image_model.to("cpu")
             except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
                 print(repr(e))
                 self.out = [[]]
                 pass
 
         def threaded_model(prompts, steps, callback):
+            print(prompts)
             try:
-                self.out = self.model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
-                                 callback=callback, callback_steps=1, height=320, width=576, num_frames=24)
+                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=5, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
                 pass
 
-        def progress_callback(i, t, latents):
+        def progress_callback(pipe, i, t, kwargs):
             self.step = i
+            return kwargs
 
         def intermediate_callback(pipe, i, t, kwargs):
             latents = kwargs["latents"]
-            #decoded = self.mini_vae.decode(latents).sample
-            for_stack = []
-            #for decode in decoded:
-            #    decode = decode.to('cpu', non_blocking=False)
-            #    decode = numpy_to_pil((decode / 2 + 0.5).permute(1, 2, 0).numpy())[0]
-            #    for_stack.append(decode)
-            #self.stack.append(np.hstack(for_stack))
-            print(latents.shape)
             self.image_step = i
             self.intermediates = latents
             self.intermediate_update = True
             return kwargs
 
         for i in range(0, len(prompts), self.max_latent):
-            image_model_thread = threading.Thread(target=threaded_model,
+            image_model_thread = threading.Thread(target=image_threaded_model,
                                             args=[[x.prompt for x in prompts[i:i + self.max_latent]],
                                                   [x.negative_prompt for x in prompts[i:i + self.max_latent]],
-                                                  self.steps, progress_callback])
+                                                  self.steps, intermediate_callback])
             image_model_thread.start()
             step = 0
+            self.step = 0
             self.intermediates = None
             self.intermediate_update = False
-            while model_thread.is_alive():
+            while image_model_thread.is_alive():
                 if self.intermediate_update:
                     for idx, intermediate in enumerate(self.intermediates):
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
-                                                 prompt=current_prompts[idx])
-                    yield RunStatus(current=self.step,
+                                                 prompt=prompts[i:i + self.max_latent][idx])
+                    yield RunStatus(current=self.image_step/2,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
                     self.intermediate_update = False
@@ -180,13 +187,13 @@ class SVDVideoModel(OptimizedModel):
             self.image_step = 0
             while model_thread.is_alive():
                 if step != self.step:
-                    yield RunStatus(current=self.step,
+                    yield RunStatus(current=(self.step+self.steps)/2,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
                     step = self.step
                 time.sleep(0.01)
             outputs = []
-            for idx, out in enumerate(self.out[0]):
+            for idx, out in enumerate(self.out):
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)

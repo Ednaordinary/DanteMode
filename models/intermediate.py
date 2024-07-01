@@ -122,14 +122,6 @@ class IntermediateOptimizedModel(OptimizedModel):
 
         def intermediate_callback(pipe, i, t, kwargs):
             latents = kwargs["latents"]
-            #decoded = self.mini_vae.decode(latents).sample
-            for_stack = []
-            #for decode in decoded:
-            #    decode = decode.to('cpu', non_blocking=False)
-            #    decode = numpy_to_pil((decode / 2 + 0.5).permute(1, 2, 0).numpy())[0]
-            #    for_stack.append(decode)
-            #self.stack.append(np.hstack(for_stack))
-            print(latents.shape)
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
@@ -146,7 +138,6 @@ class IntermediateOptimizedModel(OptimizedModel):
                 pass
 
         for im in range(0, len(prompts), self.max_latent):
-            #output = self.model([x.prompt for x in prompts[i:i+self.max_latent]], negative_prompt=[x.negative_prompt for x in prompts[i:i+self.max_latent]], num_inference_steps=self.steps)
             current_prompts = prompts[im:im + self.max_latent]
             model_thread = threading.Thread(target=threaded_model,
                                             args=[[x.prompt for x in prompts[im:im + self.max_latent]],
