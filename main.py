@@ -567,7 +567,6 @@ live_timestamp = {}
 async def live(
         interaction: discord.Interaction,
         prompt: str,
-        negative_prompt: Optional[str],
 ):
     if interaction.user.id != 381983555930292224:
         await interaction.response.send("i wonder what this could be? dante4 soon!")
@@ -580,7 +579,7 @@ async def live(
 
 
 @live.on_autocomplete("prompt")
-async def live_prompt(interaction: discord.Interaction, prompt: str, negative_prompt: Optional[int] = None):
+async def live_prompt(interaction: discord.Interaction, prompt: str):
     if interaction.user.id != 381983555930292224:
         await interaction.response.send_autocomplete([])
     else:
@@ -600,7 +599,7 @@ async def live_prompt(interaction: discord.Interaction, prompt: str, negative_pr
         live_timestamp[interaction.user] = time.time()
         if prompt and prompt != "Prompt queued":
             prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
-                                               negative_prompt=negative_prompt if negative_prompt != None else "",
+                                               negative_prompt="",
                                                amount=5,
                                                interaction=live_message))
 
