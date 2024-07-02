@@ -31,12 +31,15 @@ class SAUDIOModel(GenericModel):
                 #self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
                 #                 callback=callback, callback_steps=1)
                 conditioning = [{"prompt": prompt, "seconds_start": 0, "seconds_total": 45} for prompt in prompts]
-                self.out = generate_diffusion_cond(model, steps=self.steps, cfg_scale=7, conditioning=conditioning, sample_size=self.sample_size, sigma_min=0.3, sigma_max=500, sampler_type="dpmpp-3m-sde", device="cuda", callback=callback, batch_size=len(conditioning))
+                self.out = generate_diffusion_cond(model, steps=self.steps, cfg_scale=7, conditioning=conditioning,
+                                                   sample_size=self.sample_size, sigma_min=0.3, sigma_max=500,
+                                                   sampler_type="dpmpp-3m-sde", device="cuda", callback=callback,
+                                                   batch_size=len(conditioning))
                 out = []
                 for output in self.out:
                     output = rearrange(output.unsqueeze(0), "b d n -> d (b n)")
-                    output = output.to(torch.float32).div(torch.max(torch.abs(output))).clamp(-1, 1).mul(32767).to(torch.int16).cpu()
-                    print(output.shape)
+                    output = output.to(torch.float32).div(torch.max(torch.abs(output))).clamp(-1, 1).mul(32767).to(
+                        torch.int16).cpu()
                     out.append(output)
                 print(len(out))
                 self.out = out
@@ -47,11 +50,6 @@ class SAUDIOModel(GenericModel):
 
         def progress_callback(*args, **kwargs):
             self.step = args[0]['i']
-        # def progress_callback(*args, **kwargs):
-        #     for arg in args:
-        #         print(arg)
-        #     for k, v in kwargs.items():
-        #         print(k, v)
 
         for i in range(0, len(prompts), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,

@@ -85,8 +85,6 @@ async def edit_any_message(message, content, files, view, request):
     for i in range(5):  # Sometimes we'll get mac address errors due to load balancing
         try:
             params = {"content": content, "files": files, "view": view}
-            #if "content" in params.keys() and params["content"] != None:
-            #    params["content"] = params["content"][:-2000] # in the bad case a string is too long
             params = {k: v for k, v in params.items() if v is not None}
             if isinstance(message, discord.Interaction):
                 await message.edit_original_message(**params)
@@ -146,7 +144,6 @@ class AgainAndUpscaleButton(discord.ui.View):
         await interaction.response.edit_message(view=self)
         for attachment in interaction.message.attachments:
             image = await attachment.read()
-            #image.seek(0)
             images.append(Image.open(io.BytesIO(image)).convert("RGB").resize((512, 512), Image.Resampling.LANCZOS))
         prompt_queue.append(FactoryRequest(
             model=LDMUpscaleModel(path="CompVis/ldm-super-resolution-4x-openimages", out_type="image", max_latent=1,
@@ -185,8 +182,6 @@ def model_factory():
                 if not prompt.model.path == tmp_path:
                     break
                 tmp_queue.append(prompt)
-                #asyncio.run_coroutine_threadsafe(
-                #    coro=prompt.interaction.edit_original_message(content="Model loaded to " + device), loop=client.loop)
                 asyncio.run_coroutine_threadsafe(
                     coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None),
                     loop=client.loop
@@ -209,21 +204,11 @@ async def async_model_runner():
     while True:
         while not run_queue:
             time.sleep(0.01)
+        model_passthrough = False
         now = run_queue
         run_queue = None
         current_model_path = now[0].model.path
-        send_cuda_message = False
-        try:
-            now[0].model.model
-        except:
-            print("failed to retrieve model, not passing through")
-            now[0].model.to("cuda")
-            send_cuda_message = True
-        else:
-            print(now[0].model.model.device.type)
-            if not now[0].model.model.device.type == "cuda":
-                now[0].model.to('cuda')
-                send_cuda_message = True
+        now[0].model.to('cuda')
         start_time = time.time()
         prompts = []
         for request in now:
@@ -238,258 +223,263 @@ async def async_model_runner():
             images[request.interaction] = [None] * request.amount
             updated[request.interaction] = False
             finalized[request.interaction] = False
-            if send_cuda_message:
-                asyncio.run_coroutine_threadsafe(
-                    coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
-                    loop=client.loop)
+            asyncio.run_coroutine_threadsafe(
+                coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
+                loop=client.loop)
         limiter = time.time()
         with torch.no_grad():
-            async for i in now[0].model.call(prompts):
-                if isinstance(i, FinalOutput):
-                    for output in i.outputs:
-                        images[output.prompt.interaction][output.prompt.index] = output
-                        updated[output.prompt.interaction] = False  # we are about to make this false, so
-                    for interaction in list(set([x.prompt.interaction for x in i.outputs])):
-                        if True:
-                            for prompt in now:
-                                if prompt.interaction == interaction:
-                                    this_request = prompt
-                                    break
-                            sendable_images = [None] * this_request.amount
-                            for_decoding = []
-                            for image in images[interaction]:
-                                if image != None:
-                                    if isinstance(image.output, PIL.Image.Image):
+            try:
+                async for i in now[0].model.call(prompts):
+                    if isinstance(i, FinalOutput):
+                        for output in i.outputs:
+                            images[output.prompt.interaction][output.prompt.index] = output
+                            updated[output.prompt.interaction] = False
+                        for interaction in list(set([x.prompt.interaction for x in i.outputs])):
+                            if True:
+                                for prompt in now:
+                                    if prompt.interaction == interaction:
+                                        this_request = prompt
+                                        break
+                                sendable_images = [None] * this_request.amount
+                                for_decoding = []
+                                for image in images[interaction]:
+                                    if image != None:
+                                        if isinstance(image.output, PIL.Image.Image):
+                                            imagebn = io.BytesIO()
+                                            image.output.save(imagebn, format='JPEG', quality=80)
+                                            imagebn.seek(0)
+                                            sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
+                                                image.prompt.index) + ".jpg")
+                                        elif image.out_type[0] == "video-zs":
+                                            # unfortunately, we have to make a temporary file
+                                            video_path = str(random.randint(1, 10000000)) + ".mp4"
+                                            export_to_video(image.output, video_path)
+                                            subprocess.check_call(
+                                                "ffmpeg -i " + str(video_path) + " redo-" + str(video_path), shell=True)
+                                            with open("redo-" + video_path, "rb") as video_file:
+                                                videobn = io.BytesIO(video_file.read())
+                                            videobn.seek(0)
+                                            sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(
+                                                image.prompt.index) + ".mp4")
+                                            os.remove(video_path)
+                                            os.remove("redo-" + video_path)
+                                        elif image.out_type[0] == "s-audio":
+                                            audio_path = str(random.randint(1, 10000000))
+                                            torchaudio.save(audio_path + ".wav", image.output, 44100)
+                                            subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
+                                                os.urandom(12).hex()[
+                                                :6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4",
+                                                                  shell=True)
+                                            with open(audio_path + ".mp4", "rb") as audio_file:
+                                                audiobn = io.BytesIO(audio_file.read())
+                                            sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
+                                                image.prompt.index) + ".mp4")
+                                            os.remove(audio_path + ".wav")
+                                            os.remove(audio_path + ".mp4")
+                                        elif image.out_type[0] == "latent-image":
+                                            for_decoding.append(image)
+                                if for_decoding != None:
+                                    for image in for_decoding:
+                                        tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
+                                        tmp_image = tmp_image.to('cpu', non_blocking=False)
+                                        gc.collect()
+                                        torch.cuda.empty_cache()
+                                        tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                         imagebn = io.BytesIO()
-                                        image.output.save(imagebn, format='JPEG', quality=80)
+                                        tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                        tmp_image.save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
+                                        if images[interaction][image.prompt.index] == image:
+                                            images[interaction][image.prompt.index].output = tmp_image
+                                        gc.collect()
+                                        torch.cuda.empty_cache()
                                         sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
                                             image.prompt.index) + ".jpg")
-                                    elif image.out_type[0] == "video-zs":
-                                        # unfortunately, we have to make a temporary file
-                                        print(image.output)
-                                        video_path = str(random.randint(1, 10000000)) + ".mp4"
-                                        export_to_video(image.output, video_path)
-                                        subprocess.check_call(
-                                            "ffmpeg -i " + str(video_path) + " redo-" + str(video_path), shell=True)
-                                        with open("redo-" + video_path, "rb") as video_file:
-                                            videobn = io.BytesIO(video_file.read())
-                                        videobn.seek(0)
-                                        sendable_images[image.prompt.index] = discord.File(fp=videobn, filename=str(
-                                            image.prompt.index) + ".mp4")
-                                        os.remove(video_path)
-                                        os.remove("redo-" + video_path)
-                                    elif image.out_type[0] == "s-audio":
-                                        audio_path = str(random.randint(1, 10000000))
-                                        torchaudio.save(audio_path + ".wav", image.output, 44100)
-                                        subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
-                                            os.urandom(12).hex()[
-                                            :6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4",
-                                                              shell=True)
-                                        with open(audio_path + ".mp4", "rb") as audio_file:
-                                            audiobn = io.BytesIO(audio_file.read())
-                                        sendable_images[image.prompt.index] = discord.File(fp=audiobn, filename=str(
-                                            image.prompt.index) + ".mp4")
-                                        os.remove(audio_path + ".wav")
-                                        os.remove(audio_path + ".mp4")
-                                    elif image.out_type[0] == "latent-image":
-                                        for_decoding.append(image)
-                            if for_decoding != None:
-                                for image in for_decoding:
-                                    print(image.output.shape)
-                                    tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
-                                    tmp_image = tmp_image.to('cpu', non_blocking=False)
-                                    gc.collect()
-                                    torch.cuda.empty_cache()
-                                    tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
-                                    imagebn = io.BytesIO()
-                                    tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
-                                    tmp_image.save(imagebn, format='JPEG', quality=80)
-                                    imagebn.seek(0)
-                                    if images[interaction][image.prompt.index] == image:
-                                        images[interaction][image.prompt.index].output = tmp_image
-                                    gc.collect()
-                                    torch.cuda.empty_cache()
-                                    sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
-                                        image.prompt.index) + ".jpg")
-                            sendable_images = [x for x in sendable_images if x != None]
-                            output_count = 0
-                            for image in images[interaction]:
-                                if isinstance(image, GenericOutput):
-                                    output_count += 1
-                            if output_count == len(images[interaction]):
-                                finalized[interaction] = True
-                            prompt = images[interaction][0].prompt
-                            if finalized[interaction]:
-                                if prompt.negative_prompt != "":
-                                    send_message = str(len(sendable_images)) + " images of '" + str(
-                                        prompt.prompt) + "' (negative: '" + str(
-                                        prompt.negative_prompt) + "') in " + str(
-                                        round(time.time() - start_time, 2)) + "s"
-                                else:
-                                    send_message = str(len(sendable_images)) + " images of '" + str(
-                                        prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
-                            else:
-                                send_message = None
-                            if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,
-                                                                                    SAUDIOModel) or isinstance(
-                                    now[0].model, SVDVideoModel):
-                                view_type = None
-                            else:
+                                sendable_images = [x for x in sendable_images if x != None]
+                                output_count = 0
+                                for image in images[interaction]:
+                                    if isinstance(image, GenericOutput):
+                                        output_count += 1
+                                if output_count == len(images[interaction]):
+                                    finalized[interaction] = True
+                                prompt = images[interaction][0].prompt
                                 if finalized[interaction]:
-                                    view_type = "AgainAndUpscale"
-                            if isinstance(now[0].model, LDMUpscaleModel):
-                                asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(
-                                    sendable_images)) + " images upscaled in " + str(
-                                    round(time.time() - start_time, 2)) + "s", [
-                                                                                           discord.File(fp=x,
-                                                                                                        filename=str(
-                                                                                                            idx) + ".jpg")
-                                                                                           for idx, x in
-                                                                                           enumerate(sendable_images)],
-                                                                                       None, None), loop=client.loop)
-                            else:
-                                asyncio.run_coroutine_threadsafe(
-                                    coro=edit_any_message(interaction, send_message, sendable_images, view_type,
-                                                          this_request), loop=client.loop)
-                            del sendable_images
-                if isinstance(i, IntermediateOutput):
-                    images[i.prompt.interaction][i.prompt.index] = i
-                    updated[i.prompt.interaction] = True
-                if isinstance(i, RunStatus):
-                    if limiter + 2.5 < time.time():
-                        limiter = time.time()
-                        for interaction in list(set(i.interactions)):
-                            if not finalized[interaction]:
-                                if updated[interaction]:
-                                    updated[interaction] = False
-                                    for prompt in now:
-                                        if prompt.interaction == interaction:
-                                            this_request = prompt
-                                            break
-                                    sendable_images = [None] * this_request.amount
-                                    for_decoding = []
-                                    for image in images[interaction]:
-                                        if image != None:
-                                            if isinstance(image.output, PIL.Image.Image):
+                                    if prompt.negative_prompt != "":
+                                        send_message = str(len(sendable_images)) + " images of '" + str(
+                                            prompt.prompt) + "' (negative: '" + str(
+                                            prompt.negative_prompt) + "') in " + str(
+                                            round(time.time() - start_time, 2)) + "s"
+                                        send_message = send_message[:-2000]
+                                    else:
+                                        send_message = str(len(sendable_images)) + " images of '" + str(
+                                            prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
+                                else:
+                                    send_message = None
+                                if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,
+                                                                                        SAUDIOModel) or isinstance(
+                                    now[0].model, SVDVideoModel):
+                                    view_type = None
+                                else:
+                                    if finalized[interaction]:
+                                        view_type = "AgainAndUpscale"
+                                if isinstance(now[0].model, LDMUpscaleModel):
+                                    asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(
+                                        sendable_images)) + " images upscaled in " + str(
+                                        round(time.time() - start_time, 2)) + "s", [
+                                                                                               discord.File(fp=x,
+                                                                                                            filename=str(
+                                                                                                                idx) + ".jpg")
+                                                                                               for idx, x in
+                                                                                               enumerate(
+                                                                                                   sendable_images)],
+                                                                                           None, None),
+                                                                     loop=client.loop)
+                                else:
+                                    asyncio.run_coroutine_threadsafe(
+                                        coro=edit_any_message(interaction, send_message, sendable_images, view_type,
+                                                              this_request), loop=client.loop)
+                                del sendable_images
+                    if isinstance(i, IntermediateOutput):
+                        images[i.prompt.interaction][i.prompt.index] = i
+                        updated[i.prompt.interaction] = True
+                    if isinstance(i, RunStatus):
+                        if limiter + 2.5 < time.time():
+                            limiter = time.time()
+                            for interaction in list(set(i.interactions)):
+                                if not finalized[interaction]:
+                                    if updated[interaction]:
+                                        updated[interaction] = False
+                                        for prompt in now:
+                                            if prompt.interaction == interaction:
+                                                this_request = prompt
+                                                break
+                                        sendable_images = [None] * this_request.amount
+                                        for_decoding = []
+                                        for image in images[interaction]:
+                                            if image != None:
+                                                if isinstance(image.output, PIL.Image.Image):
+                                                    imagebn = io.BytesIO()
+                                                    image.output.save(imagebn, format='JPEG', quality=80)
+                                                    imagebn.seek(0)
+                                                    sendable_images[image.prompt.index] = discord.File(fp=imagebn,
+                                                                                                       filename=str(
+                                                                                                           image.prompt.index) + ".jpg")
+                                                elif image.out_type[0] == "video-zs":
+                                                    # unfortunately, we have to make a temporary file
+                                                    # I kinda hate this method, but it's the only way I found
+                                                    video_path = str(random.randint(1, 10000000)) + ".mp4"
+                                                    export_to_video(image.output, video_path)
+                                                    # export_to_video exports a discord unplayable video, must reencode
+                                                    subprocess.check_call(
+                                                        "ffmpeg -i " + str(video_path) + " redo-" + str(video_path),
+                                                        shell=True)
+                                                    with open("redo-" + video_path, "rb") as video_file:
+                                                        videobn = io.BytesIO(video_file.read())
+                                                    videobn.seek(0)
+                                                    sendable_images[image.prompt.index] = discord.File(fp=videobn,
+                                                                                                       filename=str(
+                                                                                                           image.prompt.index) + ".mp4")
+                                                    os.remove(video_path)
+                                                    os.remove("redo-" + video_path)
+                                                elif image.out_type[0] == "s-audio":
+                                                    audio_path = str(random.randint(1, 10000000))
+                                                    torchaudio.save(audio_path + ".wav", image.output, 44100)
+                                                    subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
+                                                        os.urandom(12).hex()[
+                                                        :6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4",
+                                                                          shell=True)
+                                                    with open(audio_path + ".wav", "rb") as audio_file:
+                                                        audiobn = io.BytesIO(audio_file.read())
+                                                    sendable_images[image.prompt.index] = discord.File(fp=audiobn,
+                                                                                                       filename=str(
+                                                                                                           image.prompt.index) + ".mp4")
+                                                    os.remove(audio_path + ".wav")
+                                                    os.remove(audio_path + ".mp4")
+                                                elif image.out_type[0] == "latent-image":
+                                                    for_decoding.append(image)
+                                        if for_decoding != None:
+                                            for image in for_decoding:
+                                                tmp_image = \
+                                                now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[
+                                                    0]
+                                                tmp_image = tmp_image.to('cpu', non_blocking=False)
+                                                gc.collect()
+                                                torch.cuda.empty_cache()
+                                                tmp_image = \
+                                                numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                                 imagebn = io.BytesIO()
-                                                image.output.save(imagebn, format='JPEG', quality=80)
+                                                tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                                tmp_image.save(imagebn, format='JPEG', quality=80)
                                                 imagebn.seek(0)
+                                                if images[interaction][image.prompt.index] == image:
+                                                    images[interaction][image.prompt.index].output = tmp_image
+                                                gc.collect()
+                                                torch.cuda.empty_cache()
                                                 sendable_images[image.prompt.index] = discord.File(fp=imagebn,
                                                                                                    filename=str(
                                                                                                        image.prompt.index) + ".jpg")
-                                            elif image.out_type[0] == "video-zs":
-                                                # unfortunately, we have to make a temporary file
-                                                # I kinda hate this method, but it's the only way I found
-                                                print(image.output)
-                                                video_path = str(random.randint(1, 10000000)) + ".mp4"
-                                                export_to_video(image.output, video_path)
-                                                # export_to_video exports a discord unplayable video, must reencode
-                                                subprocess.check_call(
-                                                    "ffmpeg -i " + str(video_path) + " redo-" + str(video_path),
-                                                    shell=True)
-                                                with open("redo-" + video_path, "rb") as video_file:
-                                                    videobn = io.BytesIO(video_file.read())
-                                                videobn.seek(0)
-                                                sendable_images[image.prompt.index] = discord.File(fp=videobn,
-                                                                                                   filename=str(
-                                                                                                       image.prompt.index) + ".mp4")
-                                                os.remove(video_path)
-                                                os.remove("redo-" + video_path)
-                                            elif image.out_type[0] == "s-audio":
-                                                audio_path = str(random.randint(1, 10000000))
-                                                torchaudio.save(audio_path + ".wav", image.output, 44100)
-                                                subprocess.check_call('ffmpeg -y -f lavfi -i "color=c=0x' + str(
-                                                    os.urandom(12).hex()[
-                                                    :6]) + ':size=512x512" -i ' + audio_path + '.wav -r 1 -c:v libx264 -crf 50 -b:a 72k  -t 45 ' + audio_path + ".mp4",
-                                                                      shell=True)
-                                                with open(audio_path + ".wav", "rb") as audio_file:
-                                                    audiobn = io.BytesIO(audio_file.read())
-                                                sendable_images[image.prompt.index] = discord.File(fp=audiobn,
-                                                                                                   filename=str(
-                                                                                                       image.prompt.index) + ".mp4")
-                                                os.remove(audio_path + ".wav")
-                                                os.remove(audio_path + ".mp4")
-                                            elif image.out_type[0] == "latent-image":
-                                                for_decoding.append(image)
-                                    if for_decoding != None:
-                                        for image in for_decoding:
-                                            print(image.output.shape)
-                                            tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[
-                                                0]
-                                            tmp_image = tmp_image.to('cpu', non_blocking=False)
-                                            gc.collect()
-                                            torch.cuda.empty_cache()
-                                            tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
-                                            imagebn = io.BytesIO()
-                                            tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
-                                            tmp_image.save(imagebn, format='JPEG', quality=80)
-                                            imagebn.seek(0)
-                                            if images[interaction][image.prompt.index] == image:
-                                                images[interaction][image.prompt.index].output = tmp_image
-                                            gc.collect()
-                                            torch.cuda.empty_cache()
-                                            sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
-                                                image.prompt.index) + ".jpg")
-                                    sendable_images = [x for x in sendable_images if x != None]
-                                    output_count = 0
-                                    for image in images[interaction]:
-                                        if isinstance(image, GenericOutput) and not isinstance(image,
-                                                                                               IntermediateOutput):
-                                            output_count += 1
-                                    if output_count == len(images[interaction]):
-                                        finalized[interaction] = True
-                                    current = 0
-                                    for x in i.interactions:
-                                        if x == interaction:
-                                            current += 1
-                                    progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
-                                            i.total[0] * this_request.amount)
-                                    send_message = str(round(progress, 2)) + "% " + str(
-                                        round(time.time() - start_time, 2)) + "s"
-                                    if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,
-                                                                                            SAUDIOModel) or isinstance(
-                                        now[0].model, SVDVideoModel):
-                                        view_type = None
+                                        sendable_images = [x for x in sendable_images if x != None]
+                                        output_count = 0
+                                        for image in images[interaction]:
+                                            if isinstance(image, GenericOutput) and not isinstance(image,
+                                                                                                   IntermediateOutput):
+                                                output_count += 1
+                                        if output_count == len(images[interaction]):
+                                            finalized[interaction] = True
+                                        current = 0
+                                        for x in i.interactions:
+                                            if x == interaction:
+                                                current += 1
+                                        progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
+                                                i.total[0] * this_request.amount)
+                                        send_message = str(round(progress, 2)) + "% " + str(
+                                            round(time.time() - start_time, 2)) + "s"
+                                        if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,
+                                                                                                SAUDIOModel) or isinstance(
+                                            now[0].model, SVDVideoModel):
+                                            view_type = None
+                                        else:
+                                            if finalized[interaction]:
+                                                view_type = "AgainAndUpscale"
+                                        asyncio.run_coroutine_threadsafe(
+                                            coro=edit_any_message(interaction, send_message, sendable_images, None,
+                                                                  None),
+                                            loop=client.loop)
+                                        del sendable_images
                                     else:
-                                        if finalized[interaction]:
-                                            view_type = "AgainAndUpscale"
-                                    #asyncio.run_coroutine_threadsafe(
-                                    #    coro=interaction.edit_original_message(content=send_message,
-                                    #                                           files=[discord.File(fp=x, filename=str(idx) + ".jpg")
-                                    #                                                  for idx, x in enumerate(sendable_images)]),
-                                    #    loop=client.loop)
-                                    asyncio.run_coroutine_threadsafe(
-                                        coro=edit_any_message(interaction, send_message, sendable_images, None, None),
-                                        loop=client.loop)
-                                    del sendable_images
-                                else:
-                                    for prompt in now:
-                                        if prompt.interaction == interaction:
-                                            this_request = prompt
-                                            break
-                                    output_count = 0
-                                    for image in images[interaction]:
-                                        if isinstance(image, GenericOutput) and not isinstance(image,
-                                                                                               IntermediateOutput):
-                                            output_count += 1
-                                    current = 0
-                                    for x in i.interactions:
-                                        if x == interaction:
-                                            current += 1
-                                    progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
-                                            i.total[0] * this_request.amount)
-                                    send_message = str(round(progress, 2)) + "% " + str(
-                                        round(time.time() - start_time, 2)) + "s"
-                                    asyncio.run_coroutine_threadsafe(
-                                        coro=edit_any_message(interaction, send_message, None, None, None),
-                                        loop=client.loop)
+                                        for prompt in now:
+                                            if prompt.interaction == interaction:
+                                                this_request = prompt
+                                                break
+                                        output_count = 0
+                                        for image in images[interaction]:
+                                            if isinstance(image, GenericOutput) and not isinstance(image,
+                                                                                                   IntermediateOutput):
+                                                output_count += 1
+                                        current = 0
+                                        for x in i.interactions:
+                                            if x == interaction:
+                                                current += 1
+                                        progress = ((current * i.current) + (output_count * i.total[0])) * 100 / (
+                                                i.total[0] * this_request.amount)
+                                        send_message = str(round(progress, 2)) + "% " + str(
+                                            round(time.time() - start_time, 2)) + "s"
+                                        asyncio.run_coroutine_threadsafe(
+                                            coro=edit_any_message(interaction, send_message, None, None, None),
+                                            loop=client.loop)
+            except Exception as e:
+                model_passthrough = False
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                print(exc_type, fname, exc_tb.tb_lineno)
+                print(repr(e))
+                with open("err.log", "a") as err_log:
+                    err_log.write(
+                        str(exc_type) + " " + str(fname) + " " + str(exc_tb.tb_lineno) + "\n" + str(repr(e)) + "\n")
+                pass
         images = {}
-        if run_queue != None and run_queue[0].model.path == now[0].model.path:
-            print("passing through model")
+        if run_queue != None and run_queue[0].model.path == now[0].model.path and model_passthrough:
             run_queue[0].model = now[0].model
-            print("pass through:", now[0].model.model.device.type)
-            print(now[0].model.model.device.type == "cuda")
         else:
             now[0].model.del_model()
         del now
@@ -553,7 +543,7 @@ async def generate(
                                  interaction=interaction)
         prompt_queue.append(request)
         await interaction.response.send_message("Generation has been queued.", view=AgainButton(request=request))
-        #dont batch because model will be loaded to gpu anyways
+        # dont batch because model will be loaded to gpu anyways
         for idx in range(images_multiplier):
             if idx == 0: continue
             prompt_queue.append(
@@ -572,40 +562,47 @@ async def generate(
 live_sessions = {}
 live_timestamp = {}
 
+
 @client.slash_command(description="Enter a Dante Live session. Send this command to end your session.")
 async def live(
         interaction: discord.Interaction,
         prompt: str,
         negative_prompt: Optional[str],
 ):
-    await interaction.response.send_message("Live session ended.")
-    try:
-        del live_sessions[interaction.user]
-    except:
-        pass
+    if interaction.user.id != 381983555930292224:
+        await interaction.response.send("i wonder what this could be? dante4 soon!")
+    else:
+        await interaction.response.send_message("Live session ended.")
+        try:
+            del live_sessions[interaction.user]
+        except:
+            pass
 
 
 @live.on_autocomplete("prompt")
 async def live_prompt(interaction: discord.Interaction, prompt: str, negative_prompt: Optional[int] = None):
-    await interaction.response.send_autocomplete(["Prompt queued"])
-    try:
-        live_sessions[interaction.user]
-    except:
-        live_message = await interaction.channel.send("Live session queued.")
-        live_sessions[interaction.user] = live_message
-        live_timestamp[interaction.user] = time.time()
+    if interaction.user.id != 381983555930292224:
+        await interaction.response.send_autocomplete([])
     else:
-        live_message = live_sessions[interaction.user]
-        if live_timestamp[interaction.user] < (time.time() - 30):
+        await interaction.response.send_autocomplete(["Prompt queued"])
+        try:
+            live_sessions[interaction.user]
+        except:
             live_message = await interaction.channel.send("Live session queued.")
             live_sessions[interaction.user] = live_message
-    global prompt_queue
-    live_timestamp[interaction.user] = time.time()
-    if prompt and prompt != "Prompt queued":
-        prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
-                                           negative_prompt=negative_prompt if negative_prompt != None else "",
-                                           amount=5,
-                                           interaction=live_message))
+            live_timestamp[interaction.user] = time.time()
+        else:
+            live_message = live_sessions[interaction.user]
+            if live_timestamp[interaction.user] < (time.time() - 30):
+                live_message = await interaction.channel.send("Live session queued.")
+                live_sessions[interaction.user] = live_message
+        global prompt_queue
+        live_timestamp[interaction.user] = time.time()
+        if prompt and prompt != "Prompt queued":
+            prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
+                                               negative_prompt=negative_prompt if negative_prompt != None else "",
+                                               amount=5,
+                                               interaction=live_message))
 
 
 threading.Thread(target=model_factory, daemon=True).start()

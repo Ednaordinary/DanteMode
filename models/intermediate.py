@@ -8,7 +8,6 @@ import threading
 import torch
 import time
 import gc
-from PIL import Image
 
 
 class IntermediateOutput(GenericOutput):
@@ -42,7 +41,6 @@ class IntermediateModel(GenericModel):
 
         def intermediate_callback(pipe, i, t, kwargs):
             latents = kwargs["latents"]
-            print(latents.shape)
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True

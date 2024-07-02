@@ -46,7 +46,7 @@ class ZSVideoModel(OptimizedModel):
         def threaded_model(prompts, negative_prompts, steps, callback):
             try:
                 self.out = self.model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
-                                 callback=callback, callback_steps=1, height=320, width=576, num_frames=24)
+                                      callback=callback, callback_steps=1, height=320, width=576, num_frames=24)
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -76,20 +76,23 @@ class ZSVideoModel(OptimizedModel):
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
 
+
 class SVDVideoModel(IntermediateOptimizedModel):
 
     def to(self, device):
         try:
             self.model
         except:
-            self.model = StableVideoDiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None)
+            self.model = StableVideoDiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                      safety_checker=None)
             vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-            self.image_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, safety_checker=None,
-                                                           vae=vae, variant="fp16", use_safetensors=True)
+            self.image_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",
+                                                                 torch_dtype=torch.float16, safety_checker=None,
+                                                                 vae=vae, variant="fp16", use_safetensors=True)
         else:
             if not self.model:
                 self.model = StableVideoDiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                               safety_checker=None)
+                                                                          safety_checker=None)
                 vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
                 self.image_model = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0",
                                                                      torch_dtype=torch.float16, safety_checker=None,
@@ -100,7 +103,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
         self.mini_vae.to(device)
         self.model = self.model.to("cpu")
         self.image_model.scheduler = DPMSolverMultistepScheduler.from_config(self.image_model.scheduler.config,
-                                                                        use_karras_sigmas=True)
+                                                                             use_karras_sigmas=True)
         self.image_model.scheduler.algorithm_type = "dpmsolver++"
         self.image_model = self.image_model.to(device)
         self.image_model.vae.enable_slicing()
@@ -122,11 +125,10 @@ class SVDVideoModel(IntermediateOptimizedModel):
                 self.model.to("cpu")
                 self.image_model.to("cuda")
                 for x in self.image_model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
-                                      num_inference_steps=steps, callback_on_step_end=callback,
-                                      callback_on_step_end_tensor_inputs=[
-                                          "latents"], height=576, width=1024).images:
+                                          num_inference_steps=steps, callback_on_step_end=callback,
+                                          callback_on_step_end_tensor_inputs=[
+                                              "latents"], height=576, width=1024).images:
                     self.out.append(x)
-                print(self.out)
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -136,11 +138,13 @@ class SVDVideoModel(IntermediateOptimizedModel):
                 pass
 
         def threaded_model(prompts, steps, callback):
-            print(prompts)
             try:
                 self.image_model.to("cpu")
                 self.model.to("cuda")
-                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30, decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0, motion_bucket_id=127).frames
+                self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback,
+                                      callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30,
+                                      decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0,
+                                      motion_bucket_id=127).frames
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -160,9 +164,9 @@ class SVDVideoModel(IntermediateOptimizedModel):
         for i in range(0, len(prompts), 10):
             self.out = []
             image_model_thread = threading.Thread(target=image_threaded_model,
-                                            args=[[x.prompt for x in prompts[i:i + 10]],
-                                                  [x.negative_prompt for x in prompts[i:i + 10]],
-                                                  self.steps, intermediate_callback])
+                                                  args=[[x.prompt for x in prompts[i:i + 10]],
+                                                        [x.negative_prompt for x in prompts[i:i + 10]],
+                                                        self.steps, intermediate_callback])
             image_model_thread.start()
             self.image_step = 0
             self.intermediates = None
@@ -172,7 +176,7 @@ class SVDVideoModel(IntermediateOptimizedModel):
                     for idx, intermediate in enumerate(self.intermediates):
                         yield IntermediateOutput(output=intermediate, out_type="latent-image",
                                                  prompt=prompts[i:i + 10][idx])
-                    yield RunStatus(current=self.image_step/2,
+                    yield RunStatus(current=self.image_step / 2,
                                     total=self.steps,
                                     interactions=[x.interaction for x in prompts[i:i + 10]])
                     self.intermediate_update = False
@@ -183,18 +187,17 @@ class SVDVideoModel(IntermediateOptimizedModel):
             yield RunStatus(current=self.steps / 2,
                             total=self.steps,
                             interactions=[x.interaction for x in prompts[i:i + 10]])
-        print(self.out)
         for i, out in enumerate(self.out):
             model_thread = threading.Thread(target=threaded_model,
-                                                 args=[out, self.steps, progress_callback])
+                                            args=[out, self.steps, progress_callback])
             model_thread.start()
             step = 0
             self.step = 0
             while model_thread.is_alive():
                 if step != self.step:
                     yield RunStatus(current=(self.step + self.steps) / 2,
-                                                 total=self.steps,
-                                                 interactions=[prompts[i].interaction])
+                                    total=self.steps,
+                                    interactions=[prompts[i].interaction])
                     step = self.step
                 time.sleep(0.01)
             outputs = [GenericOutput(output=self.out[0], out_type=self.out_type, prompt=prompts[i])]

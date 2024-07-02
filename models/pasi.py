@@ -11,7 +11,17 @@ import torch
 
 class PASIModel(IntermediateModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                self.transformer = Transformer2DModel.from_pretrained(
+                    "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
+                    subfolder='transformer',
+                    torch_dtype=torch.float16,
+                    use_safetensors=True,
+                )
+                self.model = PixArtSigmaPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                 transformer=self.transformer, use_safetensors=True)
+        except:
             self.transformer = Transformer2DModel.from_pretrained(
                 "PixArt-alpha/PixArt-Sigma-XL-2-1024-MS",
                 subfolder='transformer',

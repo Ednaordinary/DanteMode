@@ -14,7 +14,14 @@ import gc
 
 class SDXLModel(IntermediateOptimizedModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                               safety_checker=None,
+                                                               vae=vae, variant="fp16", use_safetensors=True)
+                del vae
+        except:
             vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None,
                                                            vae=vae, variant="fp16", use_safetensors=True)
@@ -30,11 +37,19 @@ class SDXLModel(IntermediateOptimizedModel):
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
 
+
 class SDDSModel(IntermediateOptimizedModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                       variant="fp16", safety_checker=None,
+                                                                       use_safetensors=True)
+                self.model.scheduler = DEISMultistepScheduler.from_config(self.model.scheduler.config)
+        except:
             self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                             variant="fp16", safety_checker=None, use_safetensors=True)
+                                                                   variant="fp16", safety_checker=None,
+                                                                   use_safetensors=True)
             self.model.scheduler = DEISMultistepScheduler.from_config(self.model.scheduler.config)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
@@ -44,9 +59,17 @@ class SDDSModel(IntermediateOptimizedModel):
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
 
+
 class SDXLDSModel(IntermediateOptimizedModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                               safety_checker=None,
+                                                               vae=vae, variant="fp16", use_safetensors=True)
+                del vae
+        except:
             vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None,
                                                            vae=vae, variant="fp16", use_safetensors=True)
@@ -59,9 +82,17 @@ class SDXLDSModel(IntermediateOptimizedModel):
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
 
+
 class SDXLJXModel(IntermediateOptimizedModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                               safety_checker=None,
+                                                               vae=vae)
+                del vae
+        except:
             vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
             self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None,
                                                            vae=vae)
@@ -76,6 +107,7 @@ class SDXLJXModel(IntermediateOptimizedModel):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
                                                             torch_dtype=torch.float16)
         self.mini_vae.to(device)
+
 
 class SDXLTModel(GenericModel):
     def to(self, device):
@@ -110,7 +142,11 @@ class SDXLTModel(GenericModel):
 
 class SD3Model(IntermediateModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                self.model = StableDiffusion3Pipeline.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                      safety_checker=None, use_safetensors=True)
+        except:
             self.model = StableDiffusion3Pipeline.from_pretrained(self.path, torch_dtype=torch.float16,
                                                                   safety_checker=None, use_safetensors=True)
         self.model = self.model.to(device)
@@ -126,7 +162,6 @@ class SD3Model(IntermediateModel):
 
         def intermediate_callback(pipe, i, t, kwargs):
             latents = kwargs["latents"]
-            print(latents.shape)
             self.step = i
             self.intermediates = latents
             self.intermediate_update = True
@@ -175,7 +210,15 @@ class SD3Model(IntermediateModel):
 
 class SCASCModel(GenericModel):
     def to(self, device):
-        if not self.model:
+        try:
+            if not self.model:
+                self.prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior",
+                                                                        variant="bf16",
+                                                                        torch_dtype=torch.bfloat16, safety_checker=None)
+                self.model = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16",
+                                                                          torch_dtype=torch.float16,
+                                                                          safety_checker=None)
+        except:
             self.prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16",
                                                                     torch_dtype=torch.bfloat16, safety_checker=None)
             self.model = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16",

@@ -18,6 +18,7 @@ class OptimizedModel(GenericModel):
         self.to("cuda")
         self.helper.set_params(cache_interval=2, cache_branch_id=0)
         self.helper.enable()
+
         def threaded_model(model, prompts, negative_prompts, steps, callback):
             try:
                 self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
