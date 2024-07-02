@@ -218,7 +218,7 @@ async def async_model_runner():
         current_model_path = now[0].model.path
         send_cuda_message = False
         try:
-            now[0].model.model
+            now[0].model.model.device
         except:
             now[0].model.to('cuda')
             send_cuda_message = True
