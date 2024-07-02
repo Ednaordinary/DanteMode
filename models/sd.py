@@ -112,19 +112,23 @@ class SDXLJXModel(IntermediateOptimizedModel):
 class SDXLTModel(GenericModel):
     def to(self, device):
         try:
-            if not self.model:
-                self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                                       safety_checker=None, variant="fp16",
-                                                                       use_safetensors=True)
+            self.model
         except:
             self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
                                                                    safety_checker=None, variant="fp16",
                                                                    use_safetensors=True)
-        self.model = self.model.to(device)
+        else:
+            if not self.model:
+                self.model = AutoPipelineForText2Image.from_pretrained(self.path, torch_dtype=torch.float16,
+                                                                       safety_checker=None, variant="fp16",
+                                                                       use_safetensors=True)
+        if self.model.device.type != device:
+            self.model = self.model.to(device)
         self.model.vae.enable_slicing()
 
     async def call(self, prompts):
-        self.to("cuda")
+        if self.model.device.type != "cuda":
+            self.to("cuda")
         for i in range(0, len(prompts), self.max_latent):
             #For SDXL Turbo we don't bother with run status's, it's too fast and just rate limits us
             try:

@@ -165,6 +165,7 @@ def model_factory():
     global prompt_queue
     global run_queue
     global current_model_path
+    global live_sessions
     while True:
         if prompt_queue != [] and run_queue != None:
             if prompt_queue[0].model.path == run_queue[0].model.path:
@@ -173,6 +174,7 @@ def model_factory():
         if prompt_queue != [] and run_queue == None:  # has to be reevaluated
             device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
+                print("loading model to cpu")
                 prompt_queue[0].model.to('cpu')
                 device = 'cpu'
             tmp_queue = []
@@ -182,10 +184,16 @@ def model_factory():
                 if not prompt.model.path == tmp_path:
                     break
                 tmp_queue.append(prompt)
-                asyncio.run_coroutine_threadsafe(
-                    coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None),
-                    loop=client.loop
-                )
+                send_load_message = True
+                for u, int in live_sessions.items():
+                    if prompt.interaction == int:
+                        send_load_message = False
+                        break
+                if send_load_message:
+                    asyncio.run_coroutine_threadsafe(
+                        coro=edit_any_message(prompt.interaction, "Model loaded to " + device, None, None, None),
+                        loop=client.loop
+                    )
                 pop_amt += 1
             for i in range(pop_amt): prompt_queue.pop(0)
             run_queue = tmp_queue
@@ -204,11 +212,20 @@ async def async_model_runner():
     while True:
         while not run_queue:
             time.sleep(0.01)
-        model_passthrough = False
+        model_passthrough = True
         now = run_queue
         run_queue = None
         current_model_path = now[0].model.path
-        now[0].model.to('cuda')
+        send_cuda_message = False
+        try:
+            now[0].model.model
+        except:
+            now[0].model.to('cuda')
+            send_cuda_message = True
+        else:
+            if now[0].model.model.device.type != "cuda":
+                now[0].model.to("cuda")
+                send_cuda_message = True
         start_time = time.time()
         prompts = []
         for request in now:
@@ -223,9 +240,10 @@ async def async_model_runner():
             images[request.interaction] = [None] * request.amount
             updated[request.interaction] = False
             finalized[request.interaction] = False
-            asyncio.run_coroutine_threadsafe(
-                coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
-                loop=client.loop)
+            if send_cuda_message:
+                asyncio.run_coroutine_threadsafe(
+                    coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
+                    loop=client.loop)
         limiter = time.time()
         with torch.no_grad():
             try:
@@ -479,8 +497,12 @@ async def async_model_runner():
                 pass
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path and model_passthrough:
+            try:
+                print(now[0].model.model.device.type)
+            except: pass
             run_queue[0].model = now[0].model
         else:
+            print("deleting model")
             now[0].model.del_model()
         del now
         gc.collect()
@@ -587,13 +609,13 @@ async def live_prompt(interaction: discord.Interaction, prompt: str):
         try:
             live_sessions[interaction.user]
         except:
-            live_message = await interaction.channel.send("Live session queued.")
+            live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">Live session queued.")
             live_sessions[interaction.user] = live_message
             live_timestamp[interaction.user] = time.time()
         else:
             live_message = live_sessions[interaction.user]
-            if live_timestamp[interaction.user] < (time.time() - 30):
-                live_message = await interaction.channel.send("Live session queued.")
+            if live_timestamp[interaction.user] < (time.time() - 60):
+                live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">\nLive session queued.")
                 live_sessions[interaction.user] = live_message
         global prompt_queue
         live_timestamp[interaction.user] = time.time()
