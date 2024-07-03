@@ -8,7 +8,7 @@ from models.audio import SAUDIOModel
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
-from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel
+from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel, SDXLDSLITModel
 from models.optimized import OptimizedModel
 from diffusers.utils import numpy_to_pil, export_to_video
 from dotenv import load_dotenv
@@ -32,7 +32,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 intents = discord.Intents.all()
-client = discord.Client(intents=intents)
+client = discord.AutoShardedClient(intents=intents)
 prompt_queue = []
 run_queue = None
 current_model_path = None
@@ -46,9 +46,11 @@ model_translations = {
                       mini_vae="madebyollin/taesdxl"),
     "sdxl-ds": SDXLDSModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
                            mini_vae="madebyollin/taesdxl"),
+    "sdxl-ds-lit": SDXLDSLITModel(path="lykon/dreamshaper-xl-lightning", out_type="image", max_latent=15, steps=4,
+                           mini_vae="madebyollin/taesdxl"),
     "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
                            mini_vae="madebyollin/taesdxl"),
-    "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=2),
+    "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=3),
     "sd-ds": SDDSModel(path="Lykon/dreamshaper-8", out_type="image", max_latent=50, steps=30,
                        mini_vae="madebyollin/taesd"),
     "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
@@ -66,6 +68,7 @@ default_images = {
     "sd2": 10,
     "sdxl": 10,
     "sdxl-ds": 10,
+    "sdxl-ds-lit": 10,
     "sdxl-jx": 10,
     "sdxl-t": 10,
     "sd-ds": 10,
@@ -497,12 +500,8 @@ async def async_model_runner():
                 pass
         images = {}
         if run_queue != None and run_queue[0].model.path == now[0].model.path and model_passthrough:
-            try:
-                print(now[0].model.model.device.type)
-            except: pass
             run_queue[0].model = now[0].model
         else:
-            print("deleting model")
             now[0].model.del_model()
         del now
         gc.collect()
