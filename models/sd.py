@@ -114,7 +114,8 @@ class SDXLDSLITModel(IntermediateModel):
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
                                           "latents"], guidance_scale=2.0)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
-            except:
+            except Exception as e:
+                print(repr(e))
                 self.out = [[]]
                 pass
 
@@ -198,8 +199,10 @@ class SDXLTModel(GenericModel):
                 self.out = self.model([x.prompt for x in prompts[i:i + self.max_latent]],
                                       negative_prompt=[x.negative_prompt for x in prompts[i:i + self.max_latent]],
                                       num_inference_steps=self.steps, guidance_scale=0.0)
-            except:
+            except Exception as e:
+                print(repr(e))
                 self.out = [[]]
+                pass
             outputs = []
             for idx, out in enumerate(self.out[0]):
                 outputs.append(

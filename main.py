@@ -32,7 +32,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 intents = discord.Intents.all()
-client = discord.AutoShardedClient(intents=intents)
+client = discord.Client(intents=intents)
 prompt_queue = []
 run_queue = None
 current_model_path = None
@@ -50,7 +50,7 @@ model_translations = {
                            mini_vae="madebyollin/taesdxl"),
     "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
                            mini_vae="madebyollin/taesdxl"),
-    "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=3),
+    "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
     "sd-ds": SDDSModel(path="Lykon/dreamshaper-8", out_type="image", max_latent=50, steps=30,
                        mini_vae="madebyollin/taesd"),
     "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,

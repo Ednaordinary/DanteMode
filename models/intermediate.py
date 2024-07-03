@@ -52,7 +52,8 @@ class IntermediateModel(GenericModel):
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
                                           "latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
-            except:
+            except Exception as e:
+                print(repr(e))
                 self.out = [[]]
                 pass
 
@@ -131,7 +132,8 @@ class IntermediateOptimizedModel(OptimizedModel):
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
                                           "latents"])  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
-            except:
+            except Exception as e:
+                print(repr(e))
                 self.out = [[]]
                 pass
 

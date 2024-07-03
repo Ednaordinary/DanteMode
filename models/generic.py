@@ -68,7 +68,8 @@ class GenericModel:
             try:
                 self.out = model(prompts, negative_prompt=negative_prompts, num_inference_steps=steps,
                                  callback=callback, callback_steps=1)
-            except:
+            except Exception as e:
+                print(repr(e))
                 self.out = [[]]
                 pass
 
