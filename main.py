@@ -504,10 +504,15 @@ async def async_model_runner():
         else:
             print("deleting model")
             now[0].model.del_model()
+        model_path = now[0].model.path
         del now
         gc.collect()
         torch.cuda.empty_cache()
         print(f'Current memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB')
+        # This log is purely for debugging purposes, all it stores is memory allocation and the last model at that time.
+        with open("allocation.log", "a") as err_log:
+            err_log.write(str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB")
+        del model_path
 
 
 def model_runner():
