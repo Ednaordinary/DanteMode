@@ -35,12 +35,13 @@ class ZSVideoModel(OptimizedModel):
 
     def del_model(self):
         del self.model
+        del self.helper
         gc.collect()
         torch.cuda.empty_cache()
 
     async def call(self, prompts):
         self.to("cuda")
-        self.helper.set_params(cache_interval=2, cache_branch_id=0)
+        self.helper.set_params(cache_interval=3, cache_branch_id=0)
         self.helper.enable()
 
         def threaded_model(prompts, negative_prompts, steps, callback):

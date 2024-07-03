@@ -502,10 +502,12 @@ async def async_model_runner():
         if run_queue != None and run_queue[0].model.path == now[0].model.path and model_passthrough:
             run_queue[0].model = now[0].model
         else:
+            print("deleting model")
             now[0].model.del_model()
         del now
         gc.collect()
         torch.cuda.empty_cache()
+        print(f'Current memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB')
 
 
 def model_runner():

@@ -1,5 +1,8 @@
+import gc
 import threading
 import time
+
+import torch
 
 from .generic import GenericModel, RunStatus, GenericOutput, FinalOutput
 from diffusers import DPMSolverMultistepScheduler
@@ -13,6 +16,12 @@ class OptimizedModel(GenericModel):
                                                                        use_karras_sigmas=True)  #, use_lu_lambdas=True)
         self.model.scheduler.algorithm_type = "dpmsolver++"
         self.helper = DeepCacheSDHelper(pipe=self.model)
+
+    def del_model(self):
+        del self.model
+        del self.helper
+        gc.collect()
+        torch.cuda.empty_cache()
 
     async def call(self, prompts):
         self.to("cuda")
