@@ -11,7 +11,7 @@ from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler, StableVide
     AutoencoderTiny
 
 from .generic import RunStatus, GenericOutput, FinalOutput
-from .intermediate import IntermediateOutput, IntermediateOptimizedModel
+from .intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from .optimized import OptimizedModel
 
 
@@ -78,7 +78,7 @@ class ZSVideoModel(OptimizedModel):
             yield FinalOutput(outputs=outputs)
 
 
-class SVDVideoModel(IntermediateOptimizedModel):
+class SVDVideoModel(IntermediateModel):
 
     def to(self, device):
         try:
@@ -108,7 +108,6 @@ class SVDVideoModel(IntermediateOptimizedModel):
         self.image_model.scheduler.algorithm_type = "dpmsolver++"
         self.image_model = self.image_model.to(device)
         self.image_model.vae.enable_slicing()
-        self.helper = DeepCacheSDHelper(pipe=self.image_model)
 
     def del_model(self):
         del self.model
@@ -118,8 +117,6 @@ class SVDVideoModel(IntermediateOptimizedModel):
 
     async def call(self, prompts):
         self.to("cuda")
-        self.helper.set_params(cache_interval=1, cache_branch_id=0)
-        self.helper.enable()
 
         def image_threaded_model(prompts, negative_prompts, steps, callback):
             try:

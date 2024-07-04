@@ -32,7 +32,7 @@ torch.backends.cuda.matmul.allow_tf32 = True
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 intents = discord.Intents.all()
-client = discord.Client(intents=intents)
+client = discord.AutoShardedClient(intents=intents)
 prompt_queue = []
 run_queue = None
 current_model_path = None
@@ -207,6 +207,7 @@ def model_factory():
 
 
 async def async_model_runner():
+    global prompt_queue
     global run_queue
     global images
     global current_model_path
@@ -215,6 +216,7 @@ async def async_model_runner():
     while True:
         while not run_queue:
             time.sleep(0.01)
+
         model_passthrough = True
         now = run_queue
         run_queue = None
@@ -231,6 +233,7 @@ async def async_model_runner():
                 send_cuda_message = True
         start_time = time.time()
         prompts = []
+        diffusing_amount = 0
         for request in now:
             if isinstance(now[0].model, LDMUpscaleModel):
                 for idx, i in enumerate(request.prompt):
@@ -247,6 +250,11 @@ async def async_model_runner():
                 asyncio.run_coroutine_threadsafe(
                     coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
                     loop=client.loop)
+            diffusing_amount += request.amount
+        activity = discord.Activity(name="Diffusion", state="Diffusing " + str(diffusing_amount) + " images | " + str(len(prompt_queue)) + " requests in queue", type=discord.ActivityType.watching)
+        asyncio.run_coroutine_threadsafe(
+            coro=client.change_presence(activity=activity, status=discord.Status.online),
+            loop=client.loop)
         limiter = time.time()
         with torch.no_grad():
             try:
@@ -504,6 +512,9 @@ async def async_model_runner():
         else:
             print("deleting model")
             now[0].model.del_model()
+            asyncio.run_coroutine_threadsafe(
+                coro=client.change_presence(activity=None, status=discord.Status.idle),
+                loop=client.loop)
         model_path = now[0].model.path
         del now
         gc.collect()
@@ -559,32 +570,26 @@ async def generate(
             description="Sends this many messages with the same prompt"
         ),
 ):
-    if interaction.user.id == 381983555930292224:
-        global default_images
-        global prompt_queue
-        if not model: model = "sdxl-t"
-        if not images: images = default_images[model]
-        if not images_multiplier: images_multiplier = 1
-        if not negative_prompt: negative_prompt = ""
-        request = FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
-                                 amount=images,
-                                 interaction=interaction)
-        prompt_queue.append(request)
-        await interaction.response.send_message("Generation has been queued.", view=AgainButton(request=request))
-        # dont batch because model will be loaded to gpu anyways
-        for idx in range(images_multiplier):
-            if idx == 0: continue
-            prompt_queue.append(
-                FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
-                               amount=images,
-                               interaction=(await interaction.channel.send("Generation has been queued.",
-                                                                           view=AgainButton(request=request)))))
-            # request can be reused since the button is request independent
-    else:
-        await interaction.response.send_message(
-            "Dante is currently in a development state for Dante4. Please come back later")
-        await interaction.channel.send(
-            "<@381983555930292224> PUT ME DOWN NOW :rage: :rage: :face_with_symbols_over_mouth: :face_with_symbols_over_mouth: ")
+    global default_images
+    global prompt_queue
+    if not model: model = "sdxl-t"
+    if not images: images = default_images[model]
+    if not images_multiplier: images_multiplier = 1
+    if not negative_prompt: negative_prompt = ""
+    request = FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+                             amount=images,
+                             interaction=interaction)
+    prompt_queue.append(request)
+    await interaction.response.send_message("Generation has been queued.", view=AgainButton(request=request))
+    # dont batch because model will be loaded to gpu anyways
+    for idx in range(images_multiplier):
+        if idx == 0: continue
+        prompt_queue.append(
+            FactoryRequest(model=model_translations[model], prompt=prompt, negative_prompt=negative_prompt,
+                           amount=images,
+                           interaction=(await interaction.channel.send("Generation has been queued.",
+                                                                       view=AgainButton(request=request)))))
+        # request can be reused since the button is interaction independent
 
 
 live_sessions = {}
@@ -596,40 +601,34 @@ async def live(
         interaction: discord.Interaction,
         prompt: str,
 ):
-    if interaction.user.id != 381983555930292224:
-        await interaction.response.send("i wonder what this could be? dante4 soon!")
-    else:
-        await interaction.response.send_message("Live session ended.")
-        try:
-            del live_sessions[interaction.user]
-        except:
-            pass
+    await interaction.response.send_message("Live session ended.")
+    try:
+        del live_sessions[interaction.user]
+    except:
+        pass
 
 
 @live.on_autocomplete("prompt")
 async def live_prompt(interaction: discord.Interaction, prompt: str):
-    if interaction.user.id != 381983555930292224:
-        await interaction.response.send_autocomplete([])
-    else:
-        await interaction.response.send_autocomplete(["Prompt queued"])
-        try:
-            live_sessions[interaction.user]
-        except:
-            live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">Live session queued.")
-            live_sessions[interaction.user] = live_message
-            live_timestamp[interaction.user] = time.time()
-        else:
-            live_message = live_sessions[interaction.user]
-            if live_timestamp[interaction.user] < (time.time() - 60):
-                live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">\nLive session queued.")
-                live_sessions[interaction.user] = live_message
-        global prompt_queue
+    await interaction.response.send_autocomplete(["Prompt queued"])
+    try:
+        live_sessions[interaction.user]
+    except:
+        live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">Live session queued.")
+        live_sessions[interaction.user] = live_message
         live_timestamp[interaction.user] = time.time()
-        if prompt and prompt != "Prompt queued":
-            prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
-                                               negative_prompt="",
-                                               amount=5,
-                                               interaction=live_message))
+    else:
+        live_message = live_sessions[interaction.user]
+        if live_timestamp[interaction.user] < (time.time() - 60):
+            live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">\nLive session queued.")
+            live_sessions[interaction.user] = live_message
+    global prompt_queue
+    live_timestamp[interaction.user] = time.time()
+    if prompt and prompt != "Prompt queued":
+        prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
+                                           negative_prompt="",
+                                           amount=5,
+                                           interaction=live_message))
 
 
 threading.Thread(target=model_factory, daemon=True).start()
