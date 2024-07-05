@@ -18,6 +18,7 @@ from PIL import Image
 import threading
 import asyncio
 import torch
+import vram
 import time
 import PIL
 import gc
@@ -42,13 +43,13 @@ model_translations = {
     "sd2": IntermediateOptimizedModel(path="stabilityai/stable-diffusion-2-1", out_type="image", max_latent=30,
                                       steps=30,
                                       mini_vae="madebyollin/taesd"),
-    "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=15, steps=35,
+    "sdxl": SDXLModel(path="stabilityai/stable-diffusion-xl-base-1.0", out_type="image", max_latent=10, steps=35,
                       mini_vae="madebyollin/taesdxl"),
     "sdxl-ds": SDXLDSModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
                            mini_vae="madebyollin/taesdxl"),
-    "sdxl-ds-lit": SDXLDSLITModel(path="lykon/dreamshaper-xl-lightning", out_type="image", max_latent=15, steps=4,
+    "sdxl-ds-lit": SDXLDSLITModel(path="lykon/dreamshaper-xl-lightning", out_type="image", max_latent=10, steps=4,
                            mini_vae="madebyollin/taesdxl"),
-    "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=15, steps=35,
+    "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=10, steps=35,
                            mini_vae="madebyollin/taesdxl"),
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
     "sd-ds": SDDSModel(path="Lykon/dreamshaper-8", out_type="image", max_latent=50, steps=30,
@@ -225,10 +226,22 @@ async def async_model_runner():
         try:
             now[0].model.model.device
         except:
+            vram.allocate("Dante")
+            async for i in vram.wait_for_allocation("Dante"):
+                for request in now:
+                    asyncio.run_coroutine_threadsafe(
+                        coro=edit_any_message(request.interaction, "Waiting for " + i, None, None, None),
+                        loop=client.loop)
             now[0].model.to('cuda')
             send_cuda_message = True
         else:
             if now[0].model.model.device.type != "cuda":
+                vram.allocate("Dante")
+                async for i in vram.wait_for_allocation("Dante"):
+                    for request in now:
+                        asyncio.run_coroutine_threadsafe(
+                            coro=edit_any_message(request.interaction, "Waiting for " + i, None, None, None),
+                            loop=client.loop)
                 now[0].model.to("cuda")
                 send_cuda_message = True
         start_time = time.time()
@@ -315,7 +328,7 @@ async def async_model_runner():
                                         torch.cuda.empty_cache()
                                         tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                         imagebn = io.BytesIO()
-                                        tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                        tmp_image.thumbnail((256, 256))
                                         tmp_image.save(imagebn, format='JPEG', quality=80)
                                         imagebn.seek(0)
                                         if images[interaction][image.prompt.index] == image:
@@ -437,7 +450,7 @@ async def async_model_runner():
                                                 tmp_image = \
                                                 numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                                 imagebn = io.BytesIO()
-                                                tmp_image.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                                                tmp_image.thumbnail((256, 256))
                                                 tmp_image.save(imagebn, format='JPEG', quality=80)
                                                 imagebn.seek(0)
                                                 if images[interaction][image.prompt.index] == image:
@@ -512,6 +525,7 @@ async def async_model_runner():
         else:
             print("deleting model")
             now[0].model.del_model()
+            vram.deallocate("Dante")
             asyncio.run_coroutine_threadsafe(
                 coro=client.change_presence(activity=None, status=discord.Status.idle),
                 loop=client.loop)
