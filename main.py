@@ -217,7 +217,7 @@ def file_queuer():
                 for x in [x for x in lines if x.strip() != ""]:
                     prompt = x.split("|")
                     channel_id = int(prompt[0])
-                    prompt = "".join(prompt[1:])
+                    prompt = "".join(prompt[1:]).replace("\\n", "\n")
                     channel = client.get_channel(channel_id)
                     if channel == None:
                         channel = asyncio.run_coroutine_threadsafe(
@@ -229,7 +229,7 @@ def file_queuer():
                             coro=channel.send("Generation has been queued."),
                             loop=client.loop
                         ).result()
-                        prompt_queue.append(FactoryRequest(model=model_translations["sdxl"], prompt=prompt,
+                        prompt_queue.append(FactoryRequest(model=model_translations["sd3-m"], prompt=prompt,
                                                            negative_prompt="",
                                                            amount=5,
                                                            interaction=message))
