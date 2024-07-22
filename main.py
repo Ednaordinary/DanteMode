@@ -401,13 +401,7 @@ async def async_model_runner():
                                 if isinstance(now[0].model, LDMUpscaleModel):
                                     asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(
                                         sendable_images)) + " images upscaled in " + str(
-                                        round(time.time() - start_time, 2)) + "s", [
-                                                                                               discord.File(fp=x,
-                                                                                                            filename=str(
-                                                                                                                idx) + ".jpg")
-                                                                                               for idx, x in
-                                                                                               enumerate(
-                                                                                                   sendable_images)],
+                                        round(time.time() - start_time, 2)) + "s", [x for x in sendable_images],
                                                                                            None, None),
                                                                      loop=client.loop)
                                 else:
