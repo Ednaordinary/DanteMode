@@ -48,7 +48,7 @@ model_translations = {
     "sdxl-ds": SDXLDSModel(path="Lykon/dreamshaper-xl-1-0", out_type="image", max_latent=15, steps=35,
                            mini_vae="madebyollin/taesdxl"),
     "sdxl-ds-lit": SDXLDSLITModel(path="lykon/dreamshaper-xl-lightning", out_type="image", max_latent=10, steps=4,
-                           mini_vae="madebyollin/taesdxl"),
+                                  mini_vae="madebyollin/taesdxl"),
     "sdxl-jx": SDXLJXModel(path="RunDiffusion/Juggernaut-X-v10", out_type="image", max_latent=10, steps=35,
                            mini_vae="madebyollin/taesdxl"),
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
@@ -206,6 +206,7 @@ def model_factory():
             gc.collect()
         time.sleep(0.01)
 
+
 def file_queuer():
     global prompt_queue
     while True:
@@ -217,13 +218,13 @@ def file_queuer():
                 for x in [x for x in lines if x.strip() != ""]:
                     prompt = x.split("|")
                     channel_id = int(prompt[0])
-                    prompt = "".join(prompt[1:]).replace("\\n", "\n")
+                    prompt = "".join(prompt[1:]).replace("\\n", "\n").strip()
                     channel = client.get_channel(channel_id)
                     if channel == None:
                         channel = asyncio.run_coroutine_threadsafe(
-                        coro=client.fetch_channel(channel_id),
-                        loop=client.loop
-                    ).result()
+                            coro=client.fetch_channel(channel_id),
+                            loop=client.loop
+                        ).result()
                     if channel != None:
                         message = asyncio.run_coroutine_threadsafe(
                             coro=channel.send("Generation has been queued."),
@@ -231,12 +232,13 @@ def file_queuer():
                         ).result()
                         prompt_queue.append(FactoryRequest(model=model_translations["sd3-m"], prompt=prompt,
                                                            negative_prompt="",
-                                                           amount=5,
+                                                           amount=2,
                                                            interaction=message))
         if overwrite:
             with open("./queue.txt", 'w') as file_queue:
                 pass
         time.sleep(0.01)
+
 
 async def async_model_runner():
     global prompt_queue
@@ -295,7 +297,8 @@ async def async_model_runner():
                     coro=edit_any_message(request.interaction, "Model loaded to gpu", None, None, None),
                     loop=client.loop)
             diffusing_amount += request.amount
-        activity = discord.Activity(name="Diffusion", state="Diffusing " + str(diffusing_amount) + " images | " + str(len(prompt_queue)) + " requests in queue", type=discord.ActivityType.watching)
+        activity = discord.Activity(name="Diffusion", state="Diffusing " + str(diffusing_amount) + " images | " + str(
+            len(prompt_queue)) + " requests in queue", type=discord.ActivityType.watching)
         asyncio.run_coroutine_threadsafe(
             coro=client.change_presence(activity=activity, status=discord.Status.online),
             loop=client.loop)
@@ -473,13 +476,13 @@ async def async_model_runner():
                                         if for_decoding != None:
                                             for image in for_decoding:
                                                 tmp_image = \
-                                                now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[
-                                                    0]
+                                                    now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[
+                                                        0]
                                                 tmp_image = tmp_image.to('cpu', non_blocking=False)
                                                 gc.collect()
                                                 torch.cuda.empty_cache()
                                                 tmp_image = \
-                                                numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
+                                                    numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).numpy())[0]
                                                 imagebn = io.BytesIO()
                                                 tmp_image.thumbnail((256, 256))
                                                 tmp_image.save(imagebn, format='JPEG', quality=80)
@@ -567,7 +570,8 @@ async def async_model_runner():
         print(f'Current memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB')
         # This log is purely for debugging purposes, all it stores is memory allocation and the last model at that time.
         with open("allocation.log", "a") as err_log:
-            err_log.write(str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB\n")
+            err_log.write(
+                str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB\n")
         del model_path
 
 

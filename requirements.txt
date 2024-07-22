@@ -16,3 +16,5 @@ ftfy
 opencv-python
 stable-audio-tools
 clip
+torchaudio
+einops
