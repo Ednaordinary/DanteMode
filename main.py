@@ -206,6 +206,37 @@ def model_factory():
             gc.collect()
         time.sleep(0.01)
 
+def file_queuer():
+    global prompt_queue
+    while True:
+        overwrite = False
+        with open("./queue.txt", "r") as file_queue:
+            lines = file_queue.readlines()
+            if [x for x in lines if x.strip() != ""] != []:
+                overwrite = True
+                for x in [x for x in lines if x.strip() != ""]:
+                    prompt = x.split("|")
+                    channel_id = int(prompt[0])
+                    prompt = "".join(prompt[1:])
+                    channel = client.get_channel(channel_id)
+                    if channel == None:
+                        channel = asyncio.run_coroutine_threadsafe(
+                        coro=client.fetch_channel(channel_id),
+                        loop=client.loop
+                    ).result()
+                    if channel != None:
+                        message = asyncio.run_coroutine_threadsafe(
+                            coro=channel.send("Generation has been queued."),
+                            loop=client.loop
+                        ).result()
+                        prompt_queue.append(FactoryRequest(model=model_translations["sdxl"], prompt=prompt,
+                                                           negative_prompt="",
+                                                           amount=5,
+                                                           interaction=message))
+        if overwrite:
+            with open("./queue.txt", 'w') as file_queue:
+                pass
+        time.sleep(0.01)
 
 async def async_model_runner():
     global prompt_queue
@@ -536,7 +567,7 @@ async def async_model_runner():
         print(f'Current memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB')
         # This log is purely for debugging purposes, all it stores is memory allocation and the last model at that time.
         with open("allocation.log", "a") as err_log:
-            err_log.write(str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB")
+            err_log.write(str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB\n")
         del model_path
 
 
@@ -628,7 +659,7 @@ async def live_prompt(interaction: discord.Interaction, prompt: str):
     try:
         live_sessions[interaction.user]
     except:
-        live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">Live session queued.")
+        live_message = await interaction.channel.send("<@" + str(interaction.user.id) + ">\nLive session queued.")
         live_sessions[interaction.user] = live_message
         live_timestamp[interaction.user] = time.time()
     else:
@@ -647,4 +678,5 @@ async def live_prompt(interaction: discord.Interaction, prompt: str):
 
 threading.Thread(target=model_factory, daemon=True).start()
 threading.Thread(target=model_runner, daemon=True).start()
+threading.Thread(target=file_queuer, daemon=True).start()
 client.run(TOKEN)

@@ -140,7 +140,7 @@ class SVDVideoModel(IntermediateModel):
                 self.image_model.to("cpu")
                 self.model.to("cuda")
                 self.out = self.model(prompts, num_inference_steps=steps, callback_on_step_end=callback,
-                                      callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=30,
+                                      callback_on_step_end_tensor_inputs=["latents"], fps=7, num_frames=25,
                                       decode_chunk_size=10, min_guidance_scale=0.0, max_guidance_scale=0.0,
                                       motion_bucket_id=127).frames
             except Exception as e:

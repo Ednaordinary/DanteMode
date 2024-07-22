@@ -8,7 +8,6 @@ def allocate(name):
     allocate = True
     with open(model_manager_path, "r") as allocation_file:
         lines = allocation_file.readlines()
-        print(lines)
         if name.strip() in [x[:-1] for x in lines]:
             allocate = False
     if allocate:
@@ -36,5 +35,4 @@ async def wait_for_allocation(name):
                         yield lines[0][:-1]
                         last_allocation = lines[0][:-1]
         time.sleep(0.02)
-        print("waiting")
     return
