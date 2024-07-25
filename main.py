@@ -26,7 +26,7 @@ import io
 import os
 
 from models.upscale import LDMUpscaleModel
-from models.video import ZSVideoModel, SVDVideoModel
+from models.video import ZSVideoModel, SVDVideoModel, SV3DVideoModel
 
 torch.backends.cuda.matmul.allow_tf32 = True
 
@@ -63,6 +63,8 @@ model_translations = {
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
     "s-audio": SAUDIOModel(path="stabilityai/stable-audio-open-1.0", out_type="s-audio", max_latent=5, steps=100),
+    "s-3d": SV3DVideoModel(path="stabilityai/sv3d", out_type="video-zs",
+                             max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
 }
 default_images = {
     "sd": 10,
@@ -79,6 +81,7 @@ default_images = {
     "s-video": 1,
     "zs-video": 3,
     "s-audio": 3,
+    #"s-3d": 1,
 }
 images = {}
 
