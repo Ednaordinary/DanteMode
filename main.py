@@ -54,7 +54,7 @@ model_translations = {
     "sdxl-t": SDXLTModel(path="stabilityai/sdxl-turbo", out_type="image", max_latent=100, steps=4),
     "sd-ds": SDDSModel(path="Lykon/dreamshaper-8", out_type="image", max_latent=50, steps=30,
                        mini_vae="madebyollin/taesd"),
-    "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=10, steps=35,
+    "sd3-m": SD3Model(path="stabilityai/stable-diffusion-3-medium-diffusers", out_type="image", max_latent=5, steps=35,
                       mini_vae="madebyollin/taesd3"),
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
