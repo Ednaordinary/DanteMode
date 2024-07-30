@@ -2,19 +2,21 @@
 
 Dante is a framework for concurrent execution and resource management between image/video/audio generation and discord. Dante creates a queue for requests and executes them on a separate thread, then updates the original request message with the generated image/s. Dante uses several tricks to provide the user with the best experience:
 
-- Model Passthrough: If a request with the same model currently being used is enqueued, Dante will keep that model on the gpu and reuse it, removing reload latency.
+- Model Passthrough: When a request with the same model currently being used is enqueued, Dante will keep that model on the gpu and reuse it, removing reload latency.
 
-- Model Preloading: If a request with a different model than what's currently being loaded is enqueued, Dante will load that model to the cpu, so it can be quickly loaded to the gpu once the current request is done, instead of reading from disk (slow).
+- Model Preloading: When a request with a different model than what's currently being loaded is enqueued, Dante will load that model to the cpu, so it can be quickly loaded to the gpu once the current request is done, instead of reading from disk (slow).
 
-- Latent previewing: With supported models, Dante sends previews of the images as they are being generated. This is done asynchronously from the main generation process, so it goes just as fast.
+- Latent Previewing: With supported models, Dante sends previews of the images as they are being generated. This is done asynchronously from the main generation process, so it goes just as fast.
 
-- Asynchronous framework: Dante's discord handler, model factory, and model runner are entirely separate, allowing each to perform asynchronously of one another to reduce blocking to the highest possible level.
+- Prompt Batching: When multiple requests with the same model are enqueued in a row, Dante will generate as many of these requests as it can at once, cutting down on overall compute time.
 
-- Embedded processes: All models run directly in the main script, meaning there is no import time for torch or other large packages.
+- Asynchronous Framework: Dante's discord handler, model factory, and model runner are entirely separate, allowing each to perform asynchronously of one another to reduce blocking to the highest possible level.
 
-- Live status: For all models, both with and without latent previewing, Dante provides the current percent and time it is on in the generation process.
+- Embedded Processes: All models run directly in the main script, meaning there is no import time for torch or other large packages.
 
-- Exception handling: If something goes wrong during the generation process, Dante doesn't break as a whole.
+- Live Status: For all models, both with and without latent previewing, Dante provides the current percent and time it is on in the generation process.
+
+- Exception Handling: If something goes wrong during the generation process, Dante doesn't break as a whole.
 
 - DanteLive: This is an experience built on top of Dante4 which allows the user to receive images as they are typing the prompt. By using all other optimizations, DanteLive reduces latency to mere seconds, and in some cases, less than a second.
 
