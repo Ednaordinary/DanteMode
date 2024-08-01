@@ -1,5 +1,5 @@
 nextcord
-diffusers
+git+https://github.com/huggingface/diffusers.git@flux-pipeline
 transformers
 accelerate
 flash_attn
@@ -19,3 +19,5 @@ clip
 torchaudio
 einops
 rembg
+protobuf
+optimum-quanto
