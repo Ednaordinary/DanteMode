@@ -114,8 +114,8 @@ default_images = {
     "sd3-m": 5,
     "scasc": 10,
     "pa-si": 10,
-    "flux-d": 1,
-    "flux-s": 1,
+    "flux-d": 3,
+    "flux-s": 10,
     "s-video": 1,
     "zs-video": 3,
     "s-audio": 3,
@@ -276,9 +276,9 @@ def file_queuer():
                             coro=channel.send("Generation has been queued."),
                             loop=client.loop
                         ).result()
-                        prompt_queue.append(FactoryRequest(model=model_translations["sd3-m"], prompt=prompt,
+                        prompt_queue.append(FactoryRequest(model=model_translations["flux-s"], prompt=prompt,
                                                            negative_prompt="",
-                                                           amount=2,
+                                                           amount=5,
                                                            interaction=message))
         if overwrite:
             with open("./queue.txt", 'w') as file_queue:
