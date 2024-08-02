@@ -60,7 +60,7 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, revision="refs/pr/3"),
+    "flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=3, steps=40, revision="refs/pr/3"),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
