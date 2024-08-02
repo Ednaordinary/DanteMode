@@ -7,7 +7,7 @@ import time
 
 from diffusers import FlowMatchEulerDiscreteScheduler, AutoencoderKL, FluxTransformer2DModel, FluxPipeline
 from transformers import CLIPTextModel, CLIPTokenizer, T5TokenizerFast, T5EncoderModel
-from optimum.quanto import freeze, quantize, qint8
+from optimum.quanto import freeze, quantize, qint4
 import torch
 
 from models.generic import GenericModel, GenericOutput, FinalOutput, RunStatus
@@ -38,17 +38,16 @@ class FLUXDevModel(GenericModel):
                                                     revision=self.revision)
                 #transformer = FluxTransformer2DModel.from_pretrained("models/flux-d/transformer")
                 transformer = FluxTransformer2DModel.from_pretrained(self.path, subfolder="transformer", revision=self.revision, torch_dtype=dtype)
+                #transformer = FluxTransformer2DModel.from_single_file("models/flux-d/flux1-dev-fp8.safetensors", torch_dtype=torch.float8_e4m3fn)
                 #transformer_device_map = infer_auto_device_map(transformer, max_memory={0: "19GiB", "cpu": "64GiB"})
                 #print(transformer_device_map)
                 loader_threads = []
                 def quantize_transformer():
-                    quantize(transformer, qint8)
+                    quantize(transformer, qint4)
                     freeze(transformer)
                     print("Finished quantizing transformer")
                 def quantize_text_encoder_2():
-                    if device == "cuda":
-                        text_encoder_2.to("cuda")
-                    quantize(text_encoder_2, qint8)
+                    quantize(text_encoder_2, qint4)
                     freeze(text_encoder_2)
                     print("Finished quantizing text encoder")
                 loader_threads.append(threading.Thread(target=quantize_transformer))
@@ -65,13 +64,13 @@ class FLUXDevModel(GenericModel):
                     scheduler=scheduler,
                     text_encoder=text_encoder,
                     tokenizer=tokenizer,
-                    transformer=None,
-                    text_encoder_2=None,
+                    transformer=transformer,
+                    text_encoder_2=text_encoder_2,
                     tokenizer_2=tokenizer_2,
                     vae=vae,
                 )
-                self.model.text_encoder_2 = text_encoder_2
-                self.model.transformer = transformer
+                #self.model.text_encoder_2 = text_encoder_2
+                #self.model.transformer = transformer
         except:
             gc.collect()
             torch.cuda.empty_cache()
@@ -88,47 +87,47 @@ class FLUXDevModel(GenericModel):
                                                           revision=self.revision)
             vae = AutoencoderKL.from_pretrained(self.path, subfolder="vae", torch_dtype=dtype,
                                                 revision=self.revision)
-            # transformer = FluxTransformer2DModel.from_pretrained("models/flux-d/transformer")
-            transformer = FluxTransformer2DModel.from_pretrained(self.path, subfolder="transformer",
-                                                                 torch_dtype=dtype, revision=self.revision)
-            # loader_threads = []
-            #
+            #transformer = FluxTransformer2DModel.from_pretrained("models/flux-d/transformer")
+            transformer = FluxTransformer2DModel.from_pretrained(self.path, subfolder="transformer", revision=self.revision, torch_dtype=dtype)
+            # transformer = FluxTransformer2DModel.from_single_file("models/flux-d/flux1-dev-fp8.safetensors", torch_dtype=torch.float8_e4m3fn)
+            # transformer_device_map = infer_auto_device_map(transformer, max_memory={0: "19GiB", "cpu": "64GiB"})
+            # print(transformer_device_map)
+            loader_threads = []
+
             def quantize_transformer():
-                quantize(transformer, qint8)
+                quantize(transformer, qint4)
                 freeze(transformer)
                 print("Finished quantizing transformer")
 
             def quantize_text_encoder_2():
-                quantize(text_encoder_2, qint8)
+                text_encoder_2.to("cuda")
+                quantize(text_encoder_2, qint4)
                 freeze(text_encoder_2)
+                text_encoder_2.to("cpu")
                 print("Finished quantizing text encoder")
-            #
-            # loader_threads.append(threading.Thread(target=quantize_transformer))
-            # loader_threads.append(threading.Thread(target=quantize_text_encoder_2))
-            # for thread in loader_threads:
-            #     thread.start()
-            # text_encoder.to(device)
-            # vae.to(device)
-            # for thread in loader_threads:
-            #     thread.join()
-            transformer.to("cuda")
-            quantize_transformer()
-            transformer.to("cpu")
-            text_encoder_2.to("cuda")
+
+            loader_threads.append(threading.Thread(target=quantize_transformer))
+            loader_threads.append(threading.Thread(target=quantize_text_encoder_2))
+            for thread in loader_threads:
+                thread.start()
+            text_encoder.to(device)
+            vae.to(device)
+            for thread in loader_threads:
+                thread.join()
             quantize_text_encoder_2()
-            text_encoder_2.to(device)
-            transformer.to(device)
+            # text_encoder_2.to(device=device)
+            # transformer.to(device=device)
             self.model = FluxPipeline(
                 scheduler=scheduler,
                 text_encoder=text_encoder,
                 tokenizer=tokenizer,
-                transformer=None,
-                text_encoder_2=None,
+                transformer=transformer,
+                text_encoder_2=text_encoder_2,
                 tokenizer_2=tokenizer_2,
                 vae=vae,
             )
-            self.model.text_encoder_2 = text_encoder_2
-            self.model.transformer = transformer
+            #self.model.text_encoder_2 = text_encoder_2
+            #self.model.transformer = transformer
         self.model = self.model.to(device)
         #self.model.enable_model_cpu_offload()
         self.model.vae.enable_slicing()
