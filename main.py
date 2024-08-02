@@ -4,7 +4,7 @@ import sys
 
 import torchaudio
 from diffusers import FluxTransformer2DModel
-from optimum.quanto import quantize, freeze, qint8
+from optimum.quanto import quantize, freeze, qint4, qint8
 from transformers import T5EncoderModel
 
 from models.audio import SAUDIOModel
@@ -55,12 +55,18 @@ temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-
 
 def quantize_thread(object, name):
     print("Quantizing", name)
-    quantize(object, qint8)
-    freeze(object)
+    try:
+        #quantize(object, qint4, exclude="proj_out")
+        quantize(object, qint8, exclude="proj_out")
+        freeze(object)
+    except Exception as e:
+        print(repr(e))
+    print("Done", name)
 quant_threads = []
 for quantable in [[temp_flux_dev_transformer, "dev transformer"], [temp_flux_dev_text_encoder_2, "dev text encoder"], [temp_flux_schnell_transformer, "schnell transformer"], [temp_flux_schnell_text_encoder_2, "schnell text encoder"]]:
     quant_threads.append(threading.Thread(target=quantize_thread, args=[quantable[0], quantable[1]]))
 for thread in quant_threads:
+    time.sleep(0.01) # just so text doesn't overlap
     thread.start()
 for thread in quant_threads:
     thread.join()
@@ -87,8 +93,8 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=2, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2),
-    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=2, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2),
+    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
@@ -109,6 +115,7 @@ default_images = {
     "scasc": 10,
     "pa-si": 10,
     "flux-d": 1,
+    "flux-s": 1,
     "s-video": 1,
     "zs-video": 3,
     "s-audio": 3,
@@ -213,7 +220,7 @@ def model_factory():
             device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
                 if current_model_path == None:
-                    print("loading model to cpu")
+                    print("loading model to gpu")
                     prompt_queue[0].model.to('cuda')
                     device = 'gpu'
                 else:

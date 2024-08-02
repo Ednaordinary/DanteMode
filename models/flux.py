@@ -125,7 +125,6 @@ class FLUXDevModel(GenericModel):
         self.model = self.model.to(device)
         #self.model.enable_model_cpu_offload()
         self.model.vae.enable_slicing()
-        print(self.model)
 
     async def call(self, prompts):
         self.to("cuda")
@@ -135,7 +134,6 @@ class FLUXDevModel(GenericModel):
                 #Flux in diffusers doesnt support negative_prompt rn :(
                 gc.collect()
                 torch.cuda.empty_cache()
-                print(self.model)
                 self.out = self.model(prompts, num_inference_steps=steps,
                                       callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
@@ -205,7 +203,8 @@ class FLUXDevTempModel(GenericModel):
                     tokenizer_2=tokenizer_2,
                     vae=vae,
                 )
-        except:
+        except Exception as e:
+            print(repr(e))
             scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler",
                                                                         revision=self.revision)
             text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
@@ -228,15 +227,15 @@ class FLUXDevTempModel(GenericModel):
         self.model = self.model.to(device)
         #self.model.enable_model_cpu_offload()
         self.model.vae.enable_slicing()
-        print(self.model)
+        self.model.vae.enable_tiling()
 
     def FluxFix(self):
         self.transformer.to("cpu")
         self.text_encoder_2.to("cpu")
 
     def del_model(self):
-        super().del_model()
         self.FluxFix()
+        super().del_model()
 
     async def call(self, prompts):
         self.to("cuda")
@@ -246,7 +245,6 @@ class FLUXDevTempModel(GenericModel):
                 #Flux in diffusers doesnt support negative_prompt rn :(
                 gc.collect()
                 torch.cuda.empty_cache()
-                print(self.model)
                 self.out = self.model(prompts, num_inference_steps=steps,
                                       callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
