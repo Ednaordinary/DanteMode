@@ -3,14 +3,16 @@ import subprocess
 import sys
 
 import torchaudio
+from diffusers import FluxTransformer2DModel
+from optimum.quanto import quantize, freeze, qint8
+from transformers import T5EncoderModel
 
 from models.audio import SAUDIOModel
 from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, FinalOutput
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
 from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel, SDXLDSLITModel
-from models.optimized import OptimizedModel
-from models.flux import FLUXDevModel
+from models.flux import FLUXDevModel, FLUXDevTempModel
 from diffusers.utils import numpy_to_pil, export_to_video
 from dotenv import load_dotenv
 from typing import Optional
@@ -38,6 +40,31 @@ client = discord.AutoShardedClient(intents=intents)
 prompt_queue = []
 run_queue = None
 current_model_path = None
+
+# The following is TEMPORARY until some form of quantized model can be quickly loaded from file.
+# Takes up a LOT of ram constantly
+
+temp_flux_dev_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="transformer", revision="refs/pr/3", torch_dtype=torch.bfloat16)
+temp_flux_dev_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="text_encoder_2",
+                                                                torch_dtype=torch.bfloat16,
+                                                                revision="refs/pr/3")
+temp_flux_schnell_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="transformer", revision="refs/pr/1", torch_dtype=torch.bfloat16)
+temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2",
+                                                                torch_dtype=torch.bfloat16,
+                                                                revision="refs/pr/1")
+
+def quantize_thread(object, name):
+    print("Quantizing", name)
+    quantize(object, qint8)
+    freeze(object)
+quant_threads = []
+for quantable in [[temp_flux_dev_transformer, "dev transformer"], [temp_flux_dev_text_encoder_2, "dev text encoder"], [temp_flux_schnell_transformer, "schnell transformer"], [temp_flux_schnell_text_encoder_2, "schnell text encoder"]]:
+    quant_threads.append(threading.Thread(target=quantize_thread, args=[quantable[0], quantable[1]]))
+for thread in quant_threads:
+    thread.start()
+for thread in quant_threads:
+    thread.join()
+
 model_translations = {
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=50, steps=30,
                                      mini_vae="madebyollin/taesd"),
@@ -60,7 +87,8 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=3, steps=40, revision="refs/pr/3"),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=2, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2),
+    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=2, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
@@ -184,10 +212,14 @@ def model_factory():
         if prompt_queue != [] and run_queue == None:  # has to be reevaluated
             device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
-
-                print("loading model to cpu")
-                prompt_queue[0].model.to('cpu')
-                device = 'cpu'
+                if current_model_path == None:
+                    print("loading model to cpu")
+                    prompt_queue[0].model.to('cuda')
+                    device = 'gpu'
+                else:
+                    print("loading model to cpu")
+                    prompt_queue[0].model.to('cpu')
+                    device = 'cpu'
             tmp_queue = []
             tmp_path = prompt_queue[0].model.path
             pop_amt = 0
@@ -405,6 +437,8 @@ async def async_model_runner():
                                 else:
                                     if finalized[interaction]:
                                         view_type = "AgainAndUpscale"
+                                    else:
+                                        view_type = None
                                 if isinstance(now[0].model, LDMUpscaleModel):
                                     asyncio.run_coroutine_threadsafe(coro=edit_any_message(interaction, str(len(
                                         sendable_images)) + " images upscaled in " + str(
@@ -518,6 +552,8 @@ async def async_model_runner():
                                         else:
                                             if finalized[interaction]:
                                                 view_type = "AgainAndUpscale"
+                                            else:
+                                                view_type = None
                                         asyncio.run_coroutine_threadsafe(
                                             coro=edit_any_message(interaction, send_message, sendable_images, None,
                                                                   None),
