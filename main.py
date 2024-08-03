@@ -56,8 +56,8 @@ temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-
 def quantize_thread(object, name):
     print("Quantizing", name)
     try:
-        #quantize(object, qint4, exclude="proj_out")
-        quantize(object, qint8, exclude="proj_out")
+        quantize(object, qint8)
+        #quantize(object, qint4, exclude=["proj_out", "x_embedder", "norm_out", "context_embedder"])
         freeze(object)
     except Exception as e:
         print(repr(e))
@@ -93,8 +93,8 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2),
-    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=3.5),
+    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
@@ -123,6 +123,20 @@ default_images = {
 }
 images = {}
 
+# This may take a while. Be really patient.
+
+def quickstart_models(model):
+    # Doing this makes sure flux-s and flux-d will be ready to load
+    this_model = model_translations[model]
+    this_model.to("cpu")
+    this_model.del_model()
+
+quickstart_threads = []
+for quickstart in [threading.Thread(target=quickstart_models, args=["flux-d"]), threading.Thread(target=quickstart_models, args=["flux-s"])]:
+    quickstart_threads.append(quickstart)
+    quickstart.start()
+for quickstart in quickstart_threads:
+    quickstart.join()
 
 async def edit_any_message(message, content, files, view, request):
     if view == "AgainAndUpscale":
@@ -276,7 +290,7 @@ def file_queuer():
                             coro=channel.send("Generation has been queued."),
                             loop=client.loop
                         ).result()
-                        prompt_queue.append(FactoryRequest(model=model_translations["flux-s"], prompt=prompt,
+                        prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
                                                            negative_prompt="",
                                                            amount=5,
                                                            interaction=message))
@@ -666,7 +680,7 @@ async def generate(
 ):
     global default_images
     global prompt_queue
-    if not model: model = "sdxl-t"
+    if not model: model = "flux-s"
     if not images: images = default_images[model]
     if not images_multiplier: images_multiplier = 1
     if not negative_prompt: negative_prompt = ""

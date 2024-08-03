@@ -174,11 +174,12 @@ class FLUXDevModel(GenericModel):
             yield FinalOutput(outputs=outputs)
 
 class FLUXDevTempModel(GenericModel):
-    def __init__(self, path, out_type, max_latent, steps, revision, transformer, text_encoder_2):
+    def __init__(self, path, out_type, max_latent, steps, revision, transformer, text_encoder_2, guidance_scale):
         super().__init__(path, out_type, max_latent, steps)
         self.revision = revision
         self.transformer = transformer
         self.text_encoder_2 = text_encoder_2
+        self.guidance_scale = guidance_scale
 
     def to(self, device):
         dtype = torch.bfloat16
@@ -248,7 +249,7 @@ class FLUXDevTempModel(GenericModel):
                 self.out = self.model(prompts, num_inference_steps=steps,
                                       callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=[
-                                          "latents"])
+                                          "latents"], guidance_scale=self.guidance_scale, max_sequence_length=512)
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
