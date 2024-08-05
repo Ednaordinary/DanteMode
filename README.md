@@ -19,3 +19,5 @@ Dante is a framework for concurrent execution and resource management between im
 - DanteLive: This is an experience built on top of Dante4 which allows the user to receive images as they are typing the prompt. By using all other optimizations, DanteLive reduces latency to mere seconds, and in some cases, less than a second.
 
 The version of Dante4 provided in this repo is tuned to run on a 24GB vram gpu with 64GB ram (32GB ram should work fine though). It's built to run like any other generic discord.py bot: Make a virtual environment, install the packages in requirements.txt, put your DISCORD_TOKEN in .env, and run.
+
+Please note, the license for this repo is not inclusive of all models used! Some are non-commercial.

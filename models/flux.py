@@ -15,47 +15,44 @@ from models.generic import GenericModel, GenericOutput, FinalOutput, RunStatus
 #from accelerate import infer_auto_device_map
 
 class FLUXDevModel(GenericModel):
-    def __init__(self, path, out_type, max_latent, steps, revision):
+    def __init__(self, path, out_type, max_latent, steps, local_path):
         super().__init__(path, out_type, max_latent, steps)
-        self.revision = revision
+        self.local_path = local_path
 
     def to(self, device):
         dtype = torch.bfloat16
         try:
             if not self.model:
-                scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler",
-                                                                            revision=self.revision)
+                scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler")
                 text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
                 tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
                 #text_encoder_2 = QuantizedT5EncoderModel.from_pretrained(model_name_or_path="models/flux-d/text_encoder_2")
                 #text_encoder_2 = T5EncoderModel.from_pretrained("models/flux-d/text_encoder_2")
                 text_encoder_2 = T5EncoderModel.from_pretrained(self.path, subfolder="text_encoder_2",
-                                                                torch_dtype=dtype,
-                                                                revision=self.revision)
-                tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype,
-                                                              revision=self.revision)
+                                                                torch_dtype=dtype)
+                tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype)
                 vae = AutoencoderKL.from_pretrained(self.path, subfolder="vae", torch_dtype=dtype,
                                                     revision=self.revision, device=device)
                 #transformer = FluxTransformer2DModel.from_pretrained("models/flux-d/transformer")
-                transformer = FluxTransformer2DModel.from_pretrained(self.path, subfolder="transformer", revision=self.revision, torch_dtype=dtype)
+                transformer = FluxTransformer2DModel.from_pretrained(self.local_path, subfolder="transformer", torch_dtype=torch.float8_e4m3fn)
                 #transformer = FluxTransformer2DModel.from_single_file("models/flux-d/flux1-dev-fp8.safetensors", torch_dtype=torch.float8_e4m3fn)
                 #transformer_device_map = infer_auto_device_map(transformer, max_memory={0: "19GiB", "cpu": "64GiB"})
                 #print(transformer_device_map)
-                loader_threads = []
-                def quantize_transformer():
-                    quantize(transformer, qint8)
-                    freeze(transformer)
-                    print("Finished quantizing transformer")
-                def quantize_text_encoder_2():
-                    quantize(text_encoder_2, qint8)
-                    freeze(text_encoder_2)
-                    print("Finished quantizing text encoder")
-                loader_threads.append(threading.Thread(target=quantize_transformer))
-                loader_threads.append(threading.Thread(target=quantize_text_encoder_2))
-                for thread in loader_threads:
-                    thread.start()
-                for thread in loader_threads:
-                    thread.join()
+                # loader_threads = []
+                # def quantize_transformer():
+                #     quantize(transformer, qint8)
+                #     freeze(transformer)
+                #     print("Finished quantizing transformer")
+                # def quantize_text_encoder_2():
+                #     quantize(text_encoder_2, qint8)
+                #     freeze(text_encoder_2)
+                #     print("Finished quantizing text encoder")
+                # loader_threads.append(threading.Thread(target=quantize_transformer))
+                # loader_threads.append(threading.Thread(target=quantize_text_encoder_2))
+                # for thread in loader_threads:
+                #     thread.start()
+                # for thread in loader_threads:
+                #     thread.join()
                 #text_encoder_2.to(device=device)
                 #transformer.to(device=device)
                 self.model = FluxPipeline(
