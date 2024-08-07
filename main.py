@@ -12,7 +12,7 @@ from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, Final
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
 from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel, SDXLDSLITModel
-from models.flux import FLUXDevModel, FLUXDevTempModel, QKVFusedFluxTransformer2DModel
+from models.flux import FLUXDevTempModel
 from diffusers.utils import numpy_to_pil, export_to_video
 from dotenv import load_dotenv
 from typing import Optional
@@ -44,12 +44,11 @@ current_model_path = None
 # # The following is TEMPORARY until some form of quantized model can be quickly loaded from file.
 # # Takes up a LOT of ram constantly
 
-temp_flux_dev_transformer = QKVFusedFluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="transformer", revision="refs/pr/3", torch_dtype=torch.bfloat16)
-temp_flux_dev_transformer.fuse_qkv_projections()
+temp_flux_dev_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="transformer", torch_dtype=torch.bfloat16)
 temp_flux_dev_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="text_encoder_2",
                                                                 torch_dtype=torch.bfloat16)
-temp_flux_schnell_transformer = QKVFusedFluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="transformer", revision="refs/pr/1", torch_dtype=torch.bfloat16)
-temp_flux_schnell_transformer.fuse_qkv_projections()
+temp_flux_schnell_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="transformer", torch_dtype=torch.bfloat16)
+#temp_flux_schnell_transformer.fuse_qkv_projections()
 temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2",
                                                                 torch_dtype=torch.bfloat16)
 
@@ -93,8 +92,8 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=2, steps=25, transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=7.5, max_seq=512),
-    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=2, steps=3, transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0, max_seq=256),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=5, steps=25, transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=7.5, max_seq=512),
+    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=5, steps=3, transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0, max_seq=256),
     #"flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, guidance_scale=3.5, local_path="flux-dev-fp8"),
     #"flux-s": FLUXDevModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, guidance_scale=0.0, local_path="flux-schnell-fp8"),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
@@ -127,18 +126,19 @@ images = {}
 
 #This may take a while. Be really patient.
 
-def quickstart_models(model):
-    # Doing this makes sure flux-s and flux-d will be ready to load
-    this_model = model_translations[model]
-    this_model.to("cpu")
-    this_model.del_model()
-
-quickstart_threads = []
-for quickstart in [threading.Thread(target=quickstart_models, args=["flux-d"]), threading.Thread(target=quickstart_models, args=["flux-s"])]:
-    quickstart_threads.append(quickstart)
-    quickstart.start()
-for quickstart in quickstart_threads:
-    quickstart.join()
+# def quickstart_models(model):
+#     # Doing this makes sure flux-s and flux-d will be ready to load
+#     this_model = model_translations[model]
+#     this_model.to("cpu")
+#     this_model.del_model()
+#
+# quickstart_threads = []
+# for quickstart in [threading.Thread(target=quickstart_models, args=["flux-d"]), threading.Thread(target=quickstart_models, args=["flux-s"])]:
+#     quickstart_threads.append(quickstart)
+#     quickstart.start()
+# for quickstart in quickstart_threads:
+#     quickstart.join()
+gc.collect()
 
 async def edit_any_message(message, content, files, view, request):
     if view == "AgainAndUpscale":

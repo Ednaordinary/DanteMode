@@ -4,17 +4,11 @@ import os
 import sys
 import threading
 import time
-from typing import Union, List, Optional, Dict, Callable, Any
+from typing import Dict
 
-import numpy as np
 from diffusers import FlowMatchEulerDiscreteScheduler, AutoencoderKL, FluxTransformer2DModel, FluxPipeline
-from diffusers.loaders import SD3LoraLoaderMixin
 from diffusers.models.attention_processor import Attention, AttentionProcessor
-from diffusers.pipelines.flux.pipeline_flux import calculate_shift, retrieve_timesteps
-from diffusers.pipelines.flux.pipeline_output import FluxPipelineOutput
-from diffusers.utils import USE_PEFT_BACKEND, scale_lora_layers, unscale_lora_layers
-from transformers import CLIPTextModel, CLIPTokenizer, T5TokenizerFast, T5EncoderModel
-from optimum.quanto import freeze, quantize, qint8
+from transformers import CLIPTextModel, CLIPTokenizer, T5TokenizerFast
 import torch
 
 from models.generic import GenericModel, GenericOutput, FinalOutput, RunStatus
@@ -54,109 +48,6 @@ class QKVFusedFluxTransformer2DModel(FluxTransformer2DModel):
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-class FLUXDevModel(GenericModel):
-    def __init__(self, path, out_type, max_latent, steps, guidance_scale, local_path):
-        super().__init__(path, out_type, max_latent, steps)
-        self.local_path = local_path
-        self.guidance_scale = guidance_scale
-
-    def to(self, device):
-        dtype = torch.bfloat16
-        #dtype = torch.float8_e4m3fn
-        try:
-            if not self.model:
-                scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler")
-                text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-                tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-                text_encoder_2 = T5EncoderModel.from_pretrained(self.path, subfolder="text_encoder_2",
-                                                                torch_dtype=dtype)
-                #text_encoder_2.to(torch.float8_e4m3fn)
-                tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype)
-                vae = AutoencoderKL.from_pretrained(self.local_path, subfolder="vae", torch_dtype=dtype, device=device)
-                transformer = FluxTransformer2DModel.from_pretrained(self.local_path, subfolder="transformer", torch_dtype=torch.float8_e4m3fn)
-                self.model = FluxPipeline(
-                    scheduler=scheduler,
-                    text_encoder=text_encoder,
-                    tokenizer=tokenizer,
-                    transformer=transformer,
-                    text_encoder_2=text_encoder_2,
-                    tokenizer_2=tokenizer_2,
-                    vae=vae,
-                )
-        except:
-            gc.collect()
-            torch.cuda.empty_cache()
-            scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler")
-            text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-            tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-            text_encoder_2 = T5EncoderModel.from_pretrained(self.path, subfolder="text_encoder_2",
-                                                            torch_dtype=dtype)
-            #text_encoder_2.to(torch.float8_e4m3fn)
-            tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype)
-            vae = AutoencoderKL.from_pretrained(self.local_path, subfolder="vae", torch_dtype=dtype, device=device)
-            transformer = FluxTransformer2DModel.from_pretrained(self.local_path, subfolder="transformer",
-                                                                 torch_dtype=torch.float8_e4m3fn)
-            self.model = FluxPipeline(
-                scheduler=scheduler,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                transformer=transformer,
-                text_encoder_2=text_encoder_2,
-                tokenizer_2=tokenizer_2,
-                vae=vae,
-            )
-        self.model = self.model.to(device)
-        #self.model.enable_model_cpu_offload()
-        self.model.vae.enable_slicing()
-
-    async def call(self, prompts):
-        self.to("cuda")
-
-        def threaded_model(prompts, negative_prompts, steps, callback):
-            try:
-                #Flux in diffusers doesnt support negative_prompt rn :(
-                gc.collect()
-                torch.cuda.empty_cache()
-                self.out = self.model(prompts, num_inference_steps=steps,
-                                      guidance_scale=self.guidance_scale,
-                                      callback_on_step_end=callback,
-                                      callback_on_step_end_tensor_inputs=[
-                                          "latents"])
-            except Exception as e:
-                exc_type, exc_obj, exc_tb = sys.exc_info()
-                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print(exc_type, fname, exc_tb.tb_lineno)
-                print(repr(e))
-                self.out = [[]]
-                #pass
-                raise e
-
-        def progress_callback(pipe, i, t, kwargs):
-            latents = kwargs["latents"]
-            self.step = i
-            return kwargs
-
-        for i in range(0, len(prompts), self.max_latent):
-            model_thread = threading.Thread(target=threaded_model,
-                                            args=[[x.prompt for x in prompts[i:i + self.max_latent]],
-                                                  [x.negative_prompt for x in prompts[i:i + self.max_latent]],
-                                                  self.steps, progress_callback])
-            model_thread.start()
-            step = 0
-            self.step = 0
-            while model_thread.is_alive():
-                if step != self.step:
-                    yield RunStatus(current=self.step,
-                                    total=self.steps,
-                                    interactions=[x.interaction for x in prompts[i:i + self.max_latent]])
-                    step = self.step
-                time.sleep(0.01)
-            outputs = []
-            for idx, out in enumerate(self.out[0]):
-                outputs.append(
-                    GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
-            yield FinalOutput(outputs=outputs)
-
 class FLUXDevTempModel(GenericModel):
     def __init__(self, path, out_type, max_latent, steps, transformer, text_encoder_2, guidance_scale, max_seq):
         super().__init__(path, out_type, max_latent, steps)
@@ -172,8 +63,6 @@ class FLUXDevTempModel(GenericModel):
                 scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler")
                 text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
                 tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-                #text_encoder_2 = QuantizedT5EncoderModel.from_pretrained(model_name_or_path="models/flux-d/text_encoder_2")
-                #text_encoder_2 = T5EncoderModel.from_pretrained("models/flux-d/text_encoder_2")
                 tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype)
                 vae = AutoencoderKL.from_pretrained(self.path, subfolder="vae", torch_dtype=dtype, device=device)
                 self.model = FluxPipeline(
@@ -190,8 +79,6 @@ class FLUXDevTempModel(GenericModel):
             scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(self.path, subfolder="scheduler")
             text_encoder = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
             tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14", torch_dtype=dtype)
-            # text_encoder_2 = QuantizedT5EncoderModel.from_pretrained(model_name_or_path="models/flux-d/text_encoder_2")
-            # text_encoder_2 = T5EncoderModel.from_pretrained("models/flux-d/text_encoder_2")
             tokenizer_2 = T5TokenizerFast.from_pretrained(self.path, subfolder="tokenizer_2", torch_dtype=dtype)
             vae = AutoencoderKL.from_pretrained(self.path, subfolder="vae", torch_dtype=dtype, device=device)
             self.model = FluxPipeline(
@@ -208,11 +95,18 @@ class FLUXDevTempModel(GenericModel):
         #     pass
         # else:
         self.model.to(device)
+        #if device == "cuda":
+        #    self.transformer.fuse_qkv_projections()
         #self.model.enable_model_cpu_offload()
         self.model.vae.enable_slicing()
-        self.model.vae.enable_tiling()
+        #self.model.vae.enable_tiling()
 
     def FluxFix(self):
+        # try:
+        #     #if not on gpu, original_attn_processors won't be set
+        #     self.transformer.unfuse_qkv_projections()
+        # except:
+        #     pass
         self.transformer.to("cpu")
         self.text_encoder_2.to("cpu")
 
