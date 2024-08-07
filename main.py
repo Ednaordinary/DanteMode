@@ -43,33 +43,31 @@ current_model_path = None
 
 # # The following is TEMPORARY until some form of quantized model can be quickly loaded from file.
 # # Takes up a LOT of ram constantly
-#
-# temp_flux_dev_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="transformer", revision="refs/pr/3", torch_dtype=torch.bfloat16)
-# temp_flux_dev_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="text_encoder_2",
-#                                                                 torch_dtype=torch.bfloat16,
-#                                                                 revision="refs/pr/3")
-# temp_flux_schnell_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="transformer", revision="refs/pr/1", torch_dtype=torch.bfloat16)
-# temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2",
-#                                                                 torch_dtype=torch.bfloat16,
-#                                                                 revision="refs/pr/1")
-#
-# def quantize_thread(object, name):
-#     print("Quantizing", name)
-#     try:
-#         quantize(object, qint8)
-#         #quantize(object, qint4, exclude=["proj_out", "x_embedder", "norm_out", "context_embedder"])
-#         freeze(object)
-#     except Exception as e:
-#         print(repr(e))
-#     print("Done", name)
-# quant_threads = []
-# for quantable in [[temp_flux_dev_transformer, "dev transformer"], [temp_flux_dev_text_encoder_2, "dev text encoder"], [temp_flux_schnell_transformer, "schnell transformer"], [temp_flux_schnell_text_encoder_2, "schnell text encoder"]]:
-#     quant_threads.append(threading.Thread(target=quantize_thread, args=[quantable[0], quantable[1]]))
-# for thread in quant_threads:
-#     time.sleep(0.01) # just so text doesn't overlap
-#     thread.start()
-# for thread in quant_threads:
-#     thread.join()
+
+temp_flux_dev_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="transformer", revision="refs/pr/3", torch_dtype=torch.bfloat16)
+temp_flux_dev_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-dev", subfolder="text_encoder_2",
+                                                                torch_dtype=torch.bfloat16)
+temp_flux_schnell_transformer = FluxTransformer2DModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="transformer", revision="refs/pr/1", torch_dtype=torch.bfloat16)
+temp_flux_schnell_text_encoder_2 = T5EncoderModel.from_pretrained("black-forest-labs/FLUX.1-schnell", subfolder="text_encoder_2",
+                                                                torch_dtype=torch.bfloat16)
+
+def quantize_thread(object, name):
+    print("Quantizing", name)
+    try:
+        quantize(object, qint8)
+        #quantize(object, qint4, exclude=["proj_out", "x_embedder", "norm_out", "context_embedder"])
+        freeze(object)
+    except Exception as e:
+        print(repr(e))
+    print("Done", name)
+quant_threads = []
+for quantable in [[temp_flux_dev_transformer, "dev transformer"], [temp_flux_dev_text_encoder_2, "dev text encoder"], [temp_flux_schnell_transformer, "schnell transformer"], [temp_flux_schnell_text_encoder_2, "schnell text encoder"]]:
+    quant_threads.append(threading.Thread(target=quantize_thread, args=[quantable[0], quantable[1]]))
+for thread in quant_threads:
+    time.sleep(0.01) # just so text doesn't overlap
+    thread.start()
+for thread in quant_threads:
+    thread.join()
 
 model_translations = {
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=50, steps=30,
@@ -93,10 +91,10 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    #"flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, revision="refs/pr/3", transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=3.5),
-    #"flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, revision="refs/pr/1", transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0),
-    "flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, guidance_scale=3.5, local_path="flux-dev-fp8"),
-    "flux-s": FLUXDevModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, guidance_scale=0.0, local_path="flux-schnell-fp8"),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=3, steps=25, transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=3.5),
+    "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=3, steps=2, transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0),
+    #"flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, guidance_scale=3.5, local_path="flux-dev-fp8"),
+    #"flux-s": FLUXDevModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, guidance_scale=0.0, local_path="flux-schnell-fp8"),
     "s-video": SVDVideoModel(path="stabilityai/stable-video-diffusion-img2vid-xt-1-1", out_type="video-zs",
                              max_latent=1, steps=35, mini_vae="madebyollin/taesdxl"),
     "zs-video": ZSVideoModel(path="cerspense/zeroscope_v2_576w", out_type="video-zs", max_latent=1, steps=40),
@@ -125,20 +123,20 @@ default_images = {
 }
 images = {}
 
-# This may take a while. Be really patient.
+#This may take a while. Be really patient.
 
-# def quickstart_models(model):
-#     # Doing this makes sure flux-s and flux-d will be ready to load
-#     this_model = model_translations[model]
-#     this_model.to("cpu")
-#     this_model.del_model()
-#
-# quickstart_threads = []
-# for quickstart in [threading.Thread(target=quickstart_models, args=["flux-d"]), threading.Thread(target=quickstart_models, args=["flux-s"])]:
-#     quickstart_threads.append(quickstart)
-#     quickstart.start()
-# for quickstart in quickstart_threads:
-#     quickstart.join()
+def quickstart_models(model):
+    # Doing this makes sure flux-s and flux-d will be ready to load
+    this_model = model_translations[model]
+    this_model.to("cpu")
+    this_model.del_model()
+
+quickstart_threads = []
+for quickstart in [threading.Thread(target=quickstart_models, args=["flux-d"]), threading.Thread(target=quickstart_models, args=["flux-s"])]:
+    quickstart_threads.append(quickstart)
+    quickstart.start()
+for quickstart in quickstart_threads:
+    quickstart.join()
 
 async def edit_any_message(message, content, files, view, request):
     if view == "AgainAndUpscale":
