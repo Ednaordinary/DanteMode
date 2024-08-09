@@ -111,7 +111,11 @@ class FLUXDevTempModel(GenericModel):
         self.text_encoder_2.to("cpu")
 
     def del_model(self):
-        self.FluxFix()
+        try:
+            self.FluxFix()
+        except Exception as e:
+            print(repr(e))
+            pass
         super().del_model()
 
     async def call(self, prompts):

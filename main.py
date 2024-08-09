@@ -31,7 +31,13 @@ import os
 from models.upscale import LDMUpscaleModel
 from models.video import ZSVideoModel, SVDVideoModel, SV3DVideoModel
 
+# idk why but this made memory errors? I think
+#nevermind it was not freezing stuff
 torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
+torch.set_grad_enabled(False)
+
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -70,6 +76,12 @@ for thread in quant_threads:
 for thread in quant_threads:
     thread.join()
 
+# unfortunately doesn't actually help performance, also causes errors when changing model locations
+#print("Compiling dev transformer")
+#temp_flux_dev_transformer = torch.compile(temp_flux_dev_transformer, dynamic=False, fullgraph=False)
+#print("Compiling schnell transformer")
+#temp_flux_schnell_transformer = torch.compile(temp_flux_schnell_transformer, mode="reduce-overhead", fullgraph=False)
+
 model_translations = {
     "sd": IntermediateOptimizedModel(path="runwayml/stable-diffusion-v1-5", out_type="image", max_latent=50, steps=30,
                                      mini_vae="madebyollin/taesd"),
@@ -92,7 +104,7 @@ model_translations = {
     "scasc": SCASCModel(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20),
     "pa-si": PASIModel(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl"),
-    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=5, steps=25, transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=7.5, max_seq=512),
+    "flux-d": FLUXDevTempModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=5, steps=25, transformer=temp_flux_dev_transformer, text_encoder_2=temp_flux_dev_text_encoder_2, guidance_scale=4.0, max_seq=512),
     "flux-s": FLUXDevTempModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=5, steps=3, transformer=temp_flux_schnell_transformer, text_encoder_2=temp_flux_schnell_text_encoder_2, guidance_scale=0.0, max_seq=256),
     #"flux-d": FLUXDevModel(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=40, guidance_scale=3.5, local_path="flux-dev-fp8"),
     #"flux-s": FLUXDevModel(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=1, steps=4, guidance_scale=0.0, local_path="flux-schnell-fp8"),
@@ -235,13 +247,24 @@ def model_factory():
         if prompt_queue != [] and run_queue == None:  # has to be reevaluated
             device = 'gpu'
             if not prompt_queue[0].model.path == current_model_path:
-                if current_model_path == None:
+                vram.allocate("Dante")
+                if current_model_path == None and vram.isfirst("Dante"):
                     print("loading model to gpu")
-                    prompt_queue[0].model.to('cuda')
+                    try:
+                        prompt_queue[0].model.to('cuda')
+                    except Exception as e:
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        print(repr(e))
                     device = 'gpu'
                 else:
                     print("loading model to cpu")
-                    prompt_queue[0].model.to('cpu')
+                    try:
+                        prompt_queue[0].model.to('cpu')
+                    except Exception as e:
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        print(repr(e))
                     device = 'cpu'
             tmp_queue = []
             tmp_path = prompt_queue[0].model.path
@@ -292,9 +315,9 @@ def file_queuer():
                             coro=channel.send("Generation has been queued."),
                             loop=client.loop
                         ).result()
-                        prompt_queue.append(FactoryRequest(model=model_translations["sdxl-t"], prompt=prompt,
+                        prompt_queue.append(FactoryRequest(model=model_translations["flux-s"], prompt=prompt,
                                                            negative_prompt="",
-                                                           amount=5,
+                                                           amount=3,
                                                            interaction=message))
         if overwrite:
             with open("./queue.txt", 'w') as file_queue:
@@ -318,10 +341,10 @@ async def async_model_runner():
         run_queue = None
         current_model_path = now[0].model.path
         send_cuda_message = False
+        vram.allocate("Dante") # Excess vram allocations can and should happen.
         try:
             now[0].model.model.device
         except:
-            vram.allocate("Dante")
             async for i in vram.wait_for_allocation("Dante"):
                 for request in now:
                     asyncio.run_coroutine_threadsafe(
@@ -331,7 +354,6 @@ async def async_model_runner():
             send_cuda_message = True
         else:
             if now[0].model.model.device.type != "cuda":
-                vram.allocate("Dante")
                 async for i in vram.wait_for_allocation("Dante"):
                     for request in now:
                         asyncio.run_coroutine_threadsafe(
@@ -443,14 +465,20 @@ async def async_model_runner():
                                 prompt = images[interaction][0].prompt
                                 if finalized[interaction]:
                                     if prompt.negative_prompt != "":
-                                        send_message = str(len(sendable_images)) + " images of '" + str(
-                                            prompt.prompt) + "' (negative: '" + str(
-                                            prompt.negative_prompt) + "') in " + str(
-                                            round(time.time() - start_time, 2)) + "s"
-                                        send_message = send_message[:-2000]
+                                        try:
+                                            send_message = str(len(sendable_images)) + " images of '" + str(
+                                                prompt.prompt) + "' (negative: '" + str(
+                                                prompt.negative_prompt) + "') in " + str(
+                                                round(time.time() - start_time, 2)) + "s"
+                                            print(prompt.negative_prompt)
+                                            print(send_message)
+                                            send_message = send_message[:2000]
+                                        except Exception as e:
+                                            print(repr(e))
                                     else:
                                         send_message = str(len(sendable_images)) + " images of '" + str(
                                             prompt.prompt) + "' in " + str(round(time.time() - start_time, 2)) + "s"
+                                        send_message = send_message[:2000]
                                 else:
                                     send_message = None
                                 if isinstance(now[0].model, ZSVideoModel) or isinstance(now[0].model,

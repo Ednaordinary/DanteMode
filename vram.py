@@ -22,6 +22,14 @@ def deallocate(name):
             if i[:-1] != name:
                 allocation_file.write(i)
 
+def isfirst(name):
+    with open(model_manager_path, "r") as allocation_file:
+        lines = allocation_file.readlines()
+    if (lines[0][:-1].strip() if lines[0][-1] == "\n" else lines[0]) == name:
+        return True
+    else:
+        return False
+
 async def wait_for_allocation(name):
     last_allocation = None
     while True:
