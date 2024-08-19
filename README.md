@@ -1,6 +1,15 @@
 # Dante4
 
-Dante is a framework for concurrent execution and resource management between image/video/audio generation and discord. Dante creates a queue for requests and executes them on a separate thread, then updates the original request message with the generated image/s. Dante uses several tricks to provide the user with the best experience:
+## Ever wanted to efficiently run 16 diffusion models through a discord bot?
+
+
+https://github.com/user-attachments/assets/020f5db2-f259-4c2a-8e4f-c7a40fd0e7b6
+
+
+
+## Nitty gritty / Fully Featured
+
+Dante is a framework for concurrent execution and resource management between image/video/audio generation and discord. Dante creates a queue for requests and executes them on a separate thread, then updates the original request message with the generated image/s. Dante uses many tricks to provide the user with the best experience:
 
 - Model Passthrough: When a request with the same model currently being used is enqueued, Dante will keep that model on the gpu and reuse it, removing reload latency.
 
@@ -20,4 +29,25 @@ Dante is a framework for concurrent execution and resource management between im
 
 - DanteLive: This is an experience built on top of Dante4 which allows the user to receive images as they are typing the prompt. By using all other optimizations, DanteLive reduces latency to mere seconds, and in some cases, less than a second.
 
-The version of Dante4 provided in this repo is tuned to run on a 24GB vram gpu with 64GB ram (32GB ram should work fine though). It's built to run like any other generic discord.py bot: Make a virtual environment, install the packages in requirements.txt, put your DISCORD_TOKEN in .env, and run.
+## Spec details
+
+The version of Dante4 provided in this repo is tuned to run on a 24GB vram gpu with 64GB ram (32GB ram should work fine though).
+
+## Run yourself
+
+It's built to run like any other generic discord.py bot:
+
+- Make a virtual environment with a tool like python-venv: `python3 -m venv venv && cd venv && source bin/activate`
+- Install the packages in requirements.txt: `pip install -r requirements.txt`
+- Put your DISCORD_TOKEN in .env
+- Run: `python3 ./main.py`
+
+If you have [Maw](https://github.com/Ednaordinary/MawDiscord) cloned and installed in the same directory as the Dante repo, they can work together dynamically to automatically manage vram and even allow Maw to prompt Dante.
+
+## Use yourself
+
+Once in a discord server with a decent amount of permissions, just use /generate or /live!
+
+Default models:
+- sdxl-t on /generate and /live on the main branch
+- flux-s on both on the dante4 branch (constant high ram requirement)
