@@ -50,4 +50,4 @@ Once in a discord server with a decent amount of permissions, just use /generate
 
 Default models:
 - sdxl-t on /generate and /live on the main branch
-- flux-s on both on the dante4 branch (constant high ram requirement)
+- flux-s on /generate and sdxl-t on /live on the dante4 branch (constant high ram requirement)
