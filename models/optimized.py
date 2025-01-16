@@ -38,7 +38,7 @@ class OptimizedModel(GenericModel):
                 pass
 
         def progress_callback(i, t, latents):
-            self.step = i
+            self.step = i + 1 # silly
 
         for i in range(0, len(prompts), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,

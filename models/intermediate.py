@@ -40,6 +40,7 @@ class IntermediateModel(GenericModel):
         self.to("cuda")
 
         def intermediate_callback(pipe, i, t, kwargs):
+            i = i + 1 # silly
             latents = kwargs["latents"]
             self.step = i
             self.intermediates = latents
@@ -120,6 +121,7 @@ class IntermediateOptimizedModel(OptimizedModel):
         #self.stack = []
 
         def intermediate_callback(pipe, i, t, kwargs):
+            i = i + 1 # silly
             latents = kwargs["latents"]
             self.step = i
             self.intermediates = latents

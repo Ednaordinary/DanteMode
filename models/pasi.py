@@ -44,7 +44,7 @@ class PASIModel(IntermediateModel):
 
         def intermediate_callback(i, t, latents):
             #pixart sigma doesnt support callback on step end
-            self.step = i
+            self.step = i + 1 # silly
             self.intermediates = latents
             self.intermediate_update = True
 

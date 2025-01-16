@@ -7,7 +7,7 @@ from .generic import GenericOutput, FinalOutput, RunStatus, GenericModel
 from .intermediate import IntermediateOptimizedModel, IntermediateModel, IntermediateOutput
 from diffusers import AutoencoderKL, AutoencoderTiny, DiffusionPipeline, DPMSolverMultistepScheduler, \
     AutoPipelineForText2Image, StableDiffusion3Pipeline, StableCascadeDecoderPipeline, StableCascadePriorPipeline, \
-    DEISMultistepScheduler
+    DEISMultistepScheduler, BitsAndBytesConfig, SD3Transformer2DModel
 import torch
 import gc
 
@@ -16,16 +16,12 @@ class SDXLModel(IntermediateOptimizedModel):
     def to(self, device):
         try:
             if not self.model:
-                vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                               safety_checker=None,
-                                                               vae=vae, variant="fp16", use_safetensors=True)
-                del vae
+                #vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+                self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.bfloat16,
+                                                               safety_checker=None, use_safetensors=True)
         except:
-            vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-            self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.float16, safety_checker=None,
-                                                           vae=vae, variant="fp16", use_safetensors=True)
-            del vae
+            #vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+            self.model = DiffusionPipeline.from_pretrained(self.path, torch_dtype=torch.bfloat16, safety_checker=None, use_safetensors=True)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
         self.model.scheduler = DPMSolverMultistepScheduler.from_config(self.model.scheduler.config,
@@ -34,7 +30,7 @@ class SDXLModel(IntermediateOptimizedModel):
         self.helper = DeepCacheSDHelper(pipe=self.model)
         if isinstance(self.mini_vae, str):
             self.mini_vae = AutoencoderTiny.from_pretrained(self.mini_vae,
-                                                            torch_dtype=torch.float16)
+                                                            torch_dtype=torch.bfloat16)
         self.mini_vae.to(device)
 
 
@@ -102,6 +98,7 @@ class SDXLDSLITModel(IntermediateModel):
         self.to("cuda")
 
         def intermediate_callback(pipe, i, t, kwargs):
+            i = i + 1 # silly
             latents = kwargs["latents"]
             self.step = i
             self.intermediates = latents
@@ -211,14 +208,42 @@ class SDXLTModel(GenericModel):
 
 
 class SD3Model(IntermediateModel):
+    def __init__(self, path, out_type, max_latent, steps, mini_vae, guide):
+        super().__init__(path, out_type, max_latent, steps, mini_vae)
+        self.guide = guide
     def to(self, device):
         try:
             if not self.model:
+                quant_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
+                transformer = SD3Transformer2DModel.from_pretrained(
+                    self.path,
+                    subfolder="transformer",
+                    quantization_config=quant_config,
+                )
                 self.model = StableDiffusion3Pipeline.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                                      safety_checker=None, use_safetensors=True)
+                                                                      safety_checker=None, use_safetensors=True, transformer=transformer)
         except:
+            quant_config = None
+            transformer = None
+            self.model = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            quant_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.bfloat16,
+            )
+            transformer = SD3Transformer2DModel.from_pretrained(
+                self.path,
+                subfolder="transformer",
+                quantization_config=quant_config,
+            )
             self.model = StableDiffusion3Pipeline.from_pretrained(self.path, torch_dtype=torch.float16,
-                                                                  safety_checker=None, use_safetensors=True)
+                                                                  safety_checker=None, use_safetensors=True, transformer=transformer)
         self.model = self.model.to(device)
         self.model.vae.enable_slicing()
         if isinstance(self.mini_vae, str):
@@ -231,10 +256,12 @@ class SD3Model(IntermediateModel):
         self.to("cuda")
 
         def intermediate_callback(pipe, i, t, kwargs):
+            i = i + 1 # silly
             latents = kwargs["latents"]
             self.step = i
-            self.intermediates = latents
-            self.intermediate_update = True
+            if not i % 2 and i != self.steps:
+                self.intermediates = latents
+                self.intermediate_update = True
             return kwargs
 
         def threaded_model(prompts, negative_prompts, steps, callback):
@@ -242,7 +269,7 @@ class SD3Model(IntermediateModel):
                 self.out = self.model(prompts, negative_prompt=[x if x != None else "" for x in negative_prompts],
                                       num_inference_steps=steps, callback_on_step_end=callback,
                                       callback_on_step_end_tensor_inputs=["latents"],
-                                      max_sequence_length=512)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
+                                      max_sequence_length=512, guidance_scale=self.guide)  # callback_on_step_end=callback, callback_on_step_end_tensor_inputs=["latents"])
             except Exception as e:
                 print(repr(e))
                 self.out = [[]]
@@ -306,12 +333,12 @@ class SCASCModel(GenericModel):
         self.to("cuda")
 
         def intermediate_callback_prior(pipe, i, t, kwargs):
-            self.prior_step = i
+            self.prior_step = i + 1 # silly
             self.intermediate_update = True
             return kwargs
 
         def intermediate_callback(pipe, i, t, kwargs):
-            self.step = i
+            self.step = i + 1 # silly
             self.intermediate_update = True
             return kwargs
 
