@@ -19,7 +19,7 @@ from models.generic import GenericModel, GenericOutput, RunStatus, Prompt, Final
 from models.intermediate import IntermediateOutput, IntermediateOptimizedModel, IntermediateModel
 from models.pasi import PASIModel
 from models.sd import SDXLModel, SDXLTModel, SD3Model, SCASCModel, SDXLDSModel, SDXLJXModel, SDDSModel, SDXLDSLITModel
-from models.flux import FLUXModel, FLUXSVDQModel, unpack_flux_latents
+from models.flux import FLUXModel, unpack_flux_latents
 from models.upscale import LDMUpscaleModel
 from models.video import ZSVideoModel, SVDVideoModel, SV3DVideoModel, CogVideoModel #, PyramidFlowModel
 from diffusers.utils import numpy_to_pil
@@ -40,6 +40,9 @@ import PIL
 import gc
 import io
 import os
+import ctypes
+
+libc = ctypes.CDLL("libc.so.6") # Needed for memory management
 
 print("imports complete")
 
@@ -48,12 +51,12 @@ torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 torch.set_grad_enabled(False)
 
-#numba_device = numba_cuda.get_current_device()
+numba_device = numba_cuda.get_current_device()
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 intents = discord.Intents.all()
-client = discord.AutoShardedClient(intents=intents)
+client = discord.AutoShardedClient(intents=intents, shard_count=5)
 prompt_queue = []
 edit_fix = {}
 run_queue = None
@@ -84,11 +87,11 @@ model_translations = {
     "scasc": (SCASCModel, dict(path="stabilityai/stable-cascade", out_type="image", max_latent=10, steps=20)),
     "pa-si": (PASIModel, dict(path="PixArt-alpha/pixart_sigma_sdxlvae_T5_diffusers", out_type="image", max_latent=20, steps=35,
                        mini_vae="madebyollin/taesdxl")),
-    "flux-d": (FLUXModel, dict(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=1, steps=30, guidance_scale=3.5, max_seq=512, transformerpath="flux-dev-transformer", res=1120)),
-    "flux-s": (FLUXModel, dict(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=2, steps=4, guidance_scale=0.0, max_seq=256, transformerpath="flux-schnell-transformer", res=1024)),
+    "flux-d": (FLUXModel, dict(path="black-forest-labs/FLUX.1-dev", out_type="image", max_latent=10, steps=30, guidance_scale=4.5, max_seq=512, transformerpath="flux-dev-transformer", res=1024, para=0.12, l_step=6)),
+    "flux-s": (FLUXModel, dict(path="black-forest-labs/FLUX.1-schnell", out_type="image", max_latent=10, steps=4, guidance_scale=0.0, max_seq=256, transformerpath="flux-schnell-transformer", res=1024, para=0.6, l_step=2)),
     "moc-video": (MochiModel, dict(path="genmo/mochi-1-preview", out_type="video-zs", max_latent=1, steps=64, guidance=8.5, length=43, flavr_path="FLAVR.pth", dynamic_cfg=True)),
-    "hn-video": (HNModel, dict(path="tencent/HunyuanVideo", transformerpath="hun-transformer", out_type="video-zs", max_latent=1, steps=30, guidance=6.0, length=45, flavr_path="FLAVR.pth", shift=7.0)),
-    "fvhn-video": (HNModel, dict(path="tencent/HunyuanVideo", transformerpath="fvhn-transformer", out_type="video-zs", max_latent=1, steps=7, guidance=6.0, length=45, flavr_path="FLAVR.pth", shift=19.0)),
+    "hn-video": (HNModel, dict(path="tencent/HunyuanVideo", transformerpath="hun-transformer", out_type="video-zs", max_latent=1, steps=30, guidance=6.0, length=45, flavr_path="FLAVR.pth", shift=7.0, para=0.06)),
+    "fvhn-video": (HNModel, dict(path="tencent/HunyuanVideo", transformerpath="fvhn-transformer", out_type="video-zs", max_latent=1, steps=7, guidance=6.0, length=65, flavr_path="FLAVR.pth", shift=19.0, para=0.15)),
     "agl-video": (AllegroModel, dict(path="rhymes-ai/Allegro", out_type="video-zs", max_latent=1, steps=20, revision="refs/pr/2")),
     #"pf-video": PyramidFlowModel(path="models/pf/pyramid-flow", out_type="video-zs", max_latent=1, steps=28, cpu_offload=True, variant='diffusion_transformer_768p'),
     "cg-video": (CogVideoModel, dict(path="THUDM/CogVideoX-2b", out_type="video-zs", max_latent=1, steps=50, cpu_offload=False)),
@@ -135,6 +138,10 @@ default_images = {
 }
 images = {}
 
+def flush():
+    gc.collect()
+    torch.cuda.empty_cache()
+    libc.malloc_trim(0)
 
 def error_handler(e, part):
     if e is not None:
@@ -309,13 +316,13 @@ def model_factory():
     global live_sessions
     while True:
         if prompt_queue != [] and run_queue != None:
-            if prompt_queue[0].model.path == run_queue[0].model.path:
+            if prompt_queue[0].model_idx == run_queue[0].model_idx:
                 run_queue.append(prompt_queue[0])
                 prompt_queue.pop(0)
-                gc.collect()
+                flush()
         if prompt_queue != [] and run_queue == None:  # has to be reevaluated
             device = 'gpu'
-            if not prompt_queue[0].model.path == current_model_path:
+            if not prompt_queue[0].model_idx == current_model_path:
                 vram.allocate("Dante")
                 if current_model_path == None and vram.isfirst("Dante"):
                     print("loading model to gpu")
@@ -323,8 +330,7 @@ def model_factory():
                         prompt_queue[0].model.to('cuda')
                     except Exception as e:
                         error_handler(e, "model factory (cuda)")
-                        gc.collect()
-                        torch.cuda.empty_cache()
+                        flush()
                     device = 'gpu'
                 else:
                     print("loading model to cpu")
@@ -332,14 +338,13 @@ def model_factory():
                         prompt_queue[0].model.to('cpu')
                     except Exception as e:
                         error_handler(e, "model factory (cpu)")
-                        gc.collect()
-                        torch.cuda.empty_cache()
+                        flush()
                     device = 'cpu'
             tmp_queue = []
-            tmp_path = prompt_queue[0].model.path
+            tmp_path = prompt_queue[0].model_idx
             pop_amt = 0
             for prompt in prompt_queue:
-                if not prompt.model.path == tmp_path:
+                if not prompt.model_idx == tmp_path:
                     break
                 tmp_queue.append(prompt)
                 send_load_message = True
@@ -358,7 +363,7 @@ def model_factory():
             if prompt:
                 del prompt
             del tmp_queue, tmp_path
-            gc.collect()
+            flush()
         time.sleep(0.01)
     print("ended factory")
 
@@ -407,13 +412,12 @@ async def async_model_runner():
         model_passthrough = True
         now = run_queue
         run_queue = None
-        current_model_path = now[0].model.path
+        current_model_path = now[0].model_idx
         send_cuda_message = False
         finalized = {}
         updated = {}
         vram.allocate("Dante") # Excess vram allocations can and should happen.
-        gc.collect()
-        torch.cuda.empty_cache()
+        flush()
         try:
             now[0].model.model.device
         except:
@@ -514,8 +518,7 @@ async def async_model_runner():
                                     for image in for_decoding:
                                         tmp_image = now[0].model.mini_vae.decode(image.output.unsqueeze(0)).sample[0]
                                         tmp_image = tmp_image.to('cpu', non_blocking=False)
-                                        gc.collect()
-                                        torch.cuda.empty_cache()
+                                        flush()
                                         tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).permute(1, 2, 0).float().numpy())[0]
                                         imagebn = io.BytesIO()
                                         tmp_image.thumbnail((256, 256))
@@ -523,8 +526,7 @@ async def async_model_runner():
                                         imagebn.seek(0)
                                         if images[interaction][image.prompt.index] == image:
                                             images[interaction][image.prompt.index].output = tmp_image
-                                        gc.collect()
-                                        torch.cuda.empty_cache()
+                                        flush()
                                         sendable_images[image.prompt.index] = discord.File(fp=imagebn, filename=str(
                                             image.prompt.index) + ".jpg")
                                 sendable_images = [x for x in sendable_images if x != None]
@@ -641,8 +643,7 @@ async def async_model_runner():
                                                 tmp_image = now[0].model.mini_vae.decode(tmp_image).sample[0]
                                                 print(tmp_image.shape)
                                                 tmp_image = tmp_image.to('cpu', non_blocking=False)
-                                                gc.collect()
-                                                torch.cuda.empty_cache()
+                                                flush()
                                                 tmp_image = numpy_to_pil((tmp_image / 2 + 0.5).clamp(0, 1).permute(1, 2, 0).float().numpy())[0]
                                                 imagebn = io.BytesIO()
                                                 tmp_image.thumbnail((512, 512))
@@ -650,8 +651,7 @@ async def async_model_runner():
                                                 imagebn.seek(0)
                                                 if images[interaction][image.prompt.index] == image:
                                                     images[interaction][image.prompt.index].output = tmp_image
-                                                gc.collect()
-                                                torch.cuda.empty_cache()
+                                                flush()
                                                 sendable_images[image.prompt.index] = discord.File(fp=imagebn,
                                                                                                    filename=str(
                                                                                                        image.prompt.index) + ".jpg")
@@ -716,8 +716,7 @@ async def async_model_runner():
                     asyncio.run_coroutine_threadsafe(
                         coro=edit_any_message(request.interaction, "(Something went wrong)", None, None, None), loop=client.loop)
                 del request
-                gc.collect()
-                torch.cuda.empty_cache()
+                flush()
                 model_passthrough = False
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
@@ -733,8 +732,9 @@ async def async_model_runner():
                     coro=ping_request_user(request),
                     loop=client.loop)
         del request
-        model_path = now[0].model.path
-        if run_queue != None and run_queue[0].model.path == now[0].model.path and model_passthrough:
+        model_path = now[0].model_idx
+        real_model_path = now[0].model.path
+        if run_queue != None and run_queue[0].model_idx == now[0].model_idx and model_passthrough:
             run_queue[0].model = now[0].model
         else:
             print("deleting model")
@@ -749,8 +749,7 @@ async def async_model_runner():
         finalized = {}
         updated = {}
         images = {}
-        gc.collect()
-        torch.cuda.empty_cache()
+        flush()
         print("Garbage:", gc.garbage)
         #numba_device.reset()
         print(f'Current vram: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB')
@@ -758,17 +757,10 @@ async def async_model_runner():
         # This log is purely for debugging purposes, all it stores is memory allocation and the last model at that time.
         with open("allocation.log", "a") as err_log:
             err_log.write(
-                str(model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB\n")
+                str(real_model_path) + f" | Post-run allocated memory: {torch.cuda.memory_allocated(device="cuda") / 1024 ** 3:.3f}GiB\n")
         del model_path
     print("exiting model runner")
     threading.Thread(target=mem_test).start()
-
-def mem_test():
-    time.sleep(2)
-    gc.collect()
-    print("-Mem Test-")
-    print(f'Current memory: {psutil.Process(os.getpid()).memory_info().rss / 1024 ** 3:.3f}GiB')
-    print("Garbage:", gc.garbage)
 
 def model_runner():
     loop = asyncio.new_event_loop()
@@ -898,4 +890,5 @@ threading.Thread(target=model_runner, daemon=True).start()
 threading.Thread(target=file_queuer, daemon=True).start()
 #threading.Thread(target=latency_checker, daemon=True).start()
 #numba_device.reset()
+print("Definitions complete, starting connect")
 client.run(TOKEN)
