@@ -7,6 +7,7 @@ from .generic import RunStatus, GenericOutput, FinalOutput, GenericModel
 from .FLAVR.FLAVR import FLAVRModel
 from diffusers import HunyuanVideoPipeline, HunyuanVideoTransformer3DModel, BitsAndBytesConfig, FlowMatchEulerDiscreteScheduler
 import math
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
 prompt_template = {
     "template": (
@@ -23,13 +24,14 @@ prompt_template = {
 }
 
 class HNModel(GenericModel):
-    def __init__(self, path, transformerpath, out_type, max_latent, steps, guidance, length, flavr_path, shift):
+    def __init__(self, path, transformerpath, out_type, max_latent, steps, guidance, length, flavr_path, shift, para):
         super().__init__(path, out_type, max_latent, steps)
         self.guidance = guidance
         self.length = length
         self.flavr_path = flavr_path
         self.transformerpath = transformerpath
         self.shift = shift
+        self.para = para
     def to(self, device):
         try:
             self.model
@@ -47,6 +49,7 @@ class HNModel(GenericModel):
         else:
             if self.model.transformer == None:
                 self.model.transformer = HunyuanVideoTransformer3DModel.from_pretrained(self.transformerpath, torch_dtype=torch.bfloat16)
+                apply_cache_on_pipe(self.model, residual_diff_threshold=self.para)
                 self.model.enable_model_cpu_offload()
 
     def del_model(self):

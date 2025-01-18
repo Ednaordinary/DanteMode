@@ -9,6 +9,7 @@ from diffusers import MochiPipeline, MochiTransformer3DModel, AutoencoderKLMochi
 from diffusers.models.transformers.transformer_mochi import MochiTransformerBlock
 #from diffusers.models.hooks import ModelHook, add_hook_to_module, PyramidAttentionBroadcastHook, remove_hook_from_module
 from diffusers.models.attention_processor import Attention
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 import math
 
 def enable_layerwise_upcasting(model, upcast_dtype=None, original_dtype=None):
@@ -62,6 +63,7 @@ class MochiModel(GenericModel):
                     i.to(torch.float8_e4m3fn)
                     enable_layerwise_upcasting(i, upcast_dtype=torch.bfloat16, original_dtype=torch.float8_e4m3fn)
             self.model = MochiPipeline.from_pretrained(self.path, torch_dtype=torch.bfloat16, transformer=transformer, vae=vae)
+            apply_cache_on_pipe(self.model, residual_diff_threshold=0.06)
             self.flavr = FLAVRModel(self.flavr_path)
         else:
             if not self.model:
@@ -79,6 +81,7 @@ class MochiModel(GenericModel):
                         i.to(torch.float8_e4m3fn)
                         enable_layerwise_upcasting(i, upcast_dtype=torch.bfloat16, original_dtype=torch.float8_e4m3fn)
                 self.model = MochiPipeline.from_pretrained("genmo/mochi-1-preview", torch_dtype=torch.bfloat16, transformer=transformer, vae=vae)
+                apply_cache_on_pipe(self.model)
                 self.flavr = FLAVRModel(self.flavr_path)
         self.model.enable_model_cpu_offload()
         self.model.enable_vae_slicing()
@@ -108,7 +111,7 @@ class MochiModel(GenericModel):
         guidance_scale_begin = 8.5 # Large effect on temporal motion ?
         guidance_scale_mid = 6.5 # Should stay at ~4.5
         mid_point = 0.3 #between 0 and 1. 0.3 is a good default.
-        guidance_scale_end = 5.5 # Large effect on spatial clarity
+        guidance_scale_end = 7.5 # Large effect on spatial clarity
         steps=self.steps
 
         def progress_callback(pipe, step_index, timestep, callback_kwargs):

@@ -50,6 +50,7 @@ class SAUDIOModel(GenericModel):
 
         def progress_callback(*args, **kwargs):
             self.step = args[0]['i']
+            print(self.step)
 
         for i in range(0, len(prompts), self.max_latent):
             model_thread = threading.Thread(target=threaded_model,

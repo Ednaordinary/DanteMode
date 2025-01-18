@@ -9,13 +9,13 @@ from typing import Dict
 from diffusers import FlowMatchEulerDiscreteScheduler, AutoencoderKL, FluxTransformer2DModel, FluxPipeline, \
     AutoencoderTiny, BitsAndBytesConfig
 from diffusers.models.attention_processor import Attention, AttentionProcessor
-from nunchaku.pipelines import flux as FluxSVDQPipeline
 from models.T5 import QuantizedT5
 from transformers import CLIPTextModel, CLIPTokenizer, T5TokenizerFast
 import torch
 
 from models.generic import GenericModel, GenericOutput, FinalOutput, RunStatus
 from models.intermediate import IntermediateModel, IntermediateOutput
+from para_attn.first_block_cache.diffusers_adapters import apply_cache_on_pipe
 
 def unpack_flux_latents(latents, height, width, vae_scale_factor):
     try:
@@ -39,13 +39,15 @@ def unpack_flux_latents(latents, height, width, vae_scale_factor):
 
 
 class FLUXModel(GenericModel):
-    def __init__(self, path, out_type, max_latent, steps, guidance_scale, max_seq, transformerpath, res):
+    def __init__(self, path, out_type, max_latent, steps, guidance_scale, max_seq, transformerpath, res, para, l_step):
         super().__init__(path, out_type, max_latent, steps)
         self.guidance_scale = guidance_scale
         self.max_seq = max_seq
         self.mini_vae = "madebyollin/taef1"
         self.transformerpath = transformerpath
         self.res = res
+        self.para = para
+        self.l_step = l_step
 
     def to(self, device):
         dtype = torch.bfloat16
@@ -78,14 +80,16 @@ class FLUXModel(GenericModel):
                 transformer=None,
                 torch_dtype=torch.bfloat16,
             )
-        self.model.to(device)
+        if device == "cpu":
+            self.model.to(device)
         if device == "cuda" and self.model.transformer == None:
             self.model.transformer = FluxTransformer2DModel.from_pretrained(self.transformerpath, torch_dtype=torch.bfloat16)
+            if self.para:
+                apply_cache_on_pipe(self.model, residual_diff_threshold=self.para)
+            self.model.enable_model_cpu_offload()
         #self.model.text_encoder_2.to(device)
         #self.model.transformer.fuse_qkv_projections()
-        #self.model.enable_model_cpu_offload()
         self.model.vae.enable_slicing()
-        self.model.vae.enable_tiling()
         if isinstance(self.mini_vae, str):
             self.mini_vae = AutoencoderTiny.from_pretrained("madebyollin/taef1",
                                                             torch_dtype=torch.bfloat16)
@@ -125,7 +129,7 @@ class FLUXModel(GenericModel):
             i = i + 1 # silly
             latents = kwargs["latents"]
             self.step = i
-            if i % 2 and i != self.steps:
+            if not i % self.l_step and i != self.steps:
                 self.intermediates = latents
                 self.intermediate_update = True
             return kwargs
@@ -161,35 +165,3 @@ class FLUXModel(GenericModel):
                 outputs.append(
                     GenericOutput(output=out, out_type=self.out_type, prompt=prompts[i:i + self.max_latent][idx]))
             yield FinalOutput(outputs=outputs)
-
-class FLUXSVDQModel(FLUXModel):
-    def __init__(self, path, out_type, max_latent, steps, guidance_scale, max_seq, transformerpath, qmodel):
-        super().__init__(path, out_type, max_latent, steps, guidance_scale, max_seq, transformerpath)
-        self.qmodel = qmodel
-    def to(self, device):
-        dtype = torch.bfloat16
-        try:
-            if not self.model:
-                self.model = FluxSVDQPipeline.from_pretrained(
-                    self.path,
-                    torch_dtype=torch.bfloat16,
-                    qmodel_path=self.qmodel
-                )
-        except Exception as e:
-            print(repr(e))
-            self.model = FluxSVDQPipeline.from_pretrained(
-                self.path,
-                torch_dtype=torch.bfloat16,
-                qmodel_path=self.qmodel
-            )
-        self.model.to(device)
-        self.model.vae.enable_slicing()
-    
-    def del_model(self):
-        try:
-            del self.model.transformer
-            del self.model
-        except:
-            pass
-        gc.collect()
-        torch.cuda.empty_cache()
