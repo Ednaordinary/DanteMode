@@ -47,7 +47,3 @@ If you have [Maw](https://github.com/Ednaordinary/MawDiscord) cloned and install
 ## Use yourself
 
 Once in a discord server with a decent amount of permissions, just use /generate or /live!
-
-Default models:
-- sdxl-t on /generate and /live on the main branch
-- flux-s on /generate and sdxl-t on /live on the dante4 branch (constant high ram requirement)
