@@ -7,7 +7,7 @@ https://github.com/user-attachments/assets/020f5db2-f259-4c2a-8e4f-c7a40fd0e7b6
 
 
 
-## Nitty gritty / Fully Featured
+## Fully Featured
 
 Dante is a framework for concurrent execution and resource management between image/video/audio generation and discord. Dante creates a queue for requests and executes them on a separate thread, then updates the original request message with the generated image/s. Dante uses many tricks to provide the user with the best experience:
 
