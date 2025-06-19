@@ -15,11 +15,19 @@ class End:
         self.queue = queue
 
 
+class Started:
+    def __init__(self, name):
+        self.name = name
+
+class Loaded:
+    def __init__(self, name):
+        self.name = name
+
 def main(queue):
     app = modal.App("Dante")
     image = modal.Image \
-        .from_registry("nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04") \
-        .apt_install("git") \
+        .from_registry("pytorch/pytorch:latest") \
+        .apt_install("git", "python3", "python-is-python3") \
         .pip_install(
         "git+https://github.com/huggingface/diffusers",
         "transformers",
@@ -39,25 +47,32 @@ def main(queue):
 
     slim_image = modal.Image \
         .debian_slim() \
-        .pip_install("huggingface_hub", "torch")
+        .pip_install("huggingface_hub", "torch", "numpy")
 
     @app.function(image=slim_image, volumes={"/model": volume}, secrets=[hf_token], serialized=True, retries=0, memory=1024*1, timeout=60*60)
-    def download(model, path, **kwargs):
+    def download(model, path, ignore, **kwargs):
         print("Importing downloader")
         import torch
         from huggingface_hub import snapshot_download
         print("Starting download")
+        ignore = ["*.pt", "*.bin"]
+        ignore.extend(ignore)
         snapshot_download(
             model,
             local_dir="/model/" + path,
-            ignore_patterns=["*.pt", "*.bin"],  # using safetensors
+            ignore_patterns=ignore,  # using safetensors
         )
         print("Download complete")
         volume.commit()
 
     @app.function(gpu="T4", image=image, volumes={"/model": volume}, serialized=True, retries=0)
-    async def get_embeds(pipeline):
-        pass
+    async def get_embeds(wrapper, queue, **kwargs):
+        queue.put(Started())
+        wrapper = wrapper()
+        wrapper.load()
+        queue.put(Loaded())
+        embeds = wrapper.embeds()
+
 
     def wait_for_end(queue, calls):
         for i in calls:

@@ -1,7 +1,6 @@
 import asyncio
 import nextcord
 
-from orchestrator import Orchestrator
+import orchestrator
 
-orchestrator = Orchestrator()
-
+queue = orchestrator.start()
